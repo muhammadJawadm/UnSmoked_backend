@@ -1,0 +1,168 @@
+const BadgeTemplate = require("../models/BadgeTemplate");
+const Badges = require("../models/Badges");
+const { checkAndAssignBadge, getUserBadges } = require("../services/badgeService");
+
+// ─── ADMIN: Badge Template CRUD ──────────────────────────────────────────────
+
+// Create a new badge template (admin only)
+exports.createBadgeTemplate = async (req, res) => {
+    try {
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ success: false, message: "Admin access required" });
+        }
+
+        const { title, imageUrl, type, conditionValue, isActive } = req.body;
+
+        if (!title || !imageUrl || !type || conditionValue === undefined) {
+            return res.status(400).json({
+                success: false,
+                message: "title, imageUrl, type, and conditionValue are required",
+            });
+        }
+
+        const template = await BadgeTemplate.create({
+            title,
+            imageUrl,
+            type,
+            conditionValue,
+            isActive: isActive !== undefined ? isActive : true,
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "Badge template created successfully",
+            template,
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Get all badge templates
+exports.getAllBadgeTemplates = async (req, res) => {
+    try {
+        const { type, isActive } = req.query;
+        const filter = {};
+
+        if (type) filter.type = type;
+        if (isActive !== undefined) filter.isActive = isActive === "true";
+
+        const templates = await BadgeTemplate.find(filter).sort({ type: 1, conditionValue: 1 });
+        res.status(200).json({ success: true, templates });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Get a single badge template
+exports.getBadgeTemplateById = async (req, res) => {
+    try {
+        const template = await BadgeTemplate.findById(req.params.id);
+        if (!template) {
+            return res.status(404).json({ success: false, message: "Badge template not found" });
+        }
+        res.status(200).json({ success: true, template });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Update a badge template (admin only)
+exports.updateBadgeTemplate = async (req, res) => {
+    try {
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ success: false, message: "Admin access required" });
+        }
+
+        const { title, imageUrl, type, conditionValue, isActive } = req.body;
+        const template = await BadgeTemplate.findByIdAndUpdate(
+            req.params.id,
+            { title, imageUrl, type, conditionValue, isActive },
+            { new: true, runValidators: true }
+        );
+
+        if (!template) {
+            return res.status(404).json({ success: false, message: "Badge template not found" });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Badge template updated successfully",
+            template,
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Delete a badge template (admin only)
+exports.deleteBadgeTemplate = async (req, res) => {
+    try {
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ success: false, message: "Admin access required" });
+        }
+
+        const template = await BadgeTemplate.findByIdAndDelete(req.params.id);
+        if (!template) {
+            return res.status(404).json({ success: false, message: "Badge template not found" });
+        }
+
+        // Also clean up any badge assignments referencing this template
+        await Badges.deleteMany({ badge: template._id });
+
+        res.status(200).json({
+            success: true,
+            message: "Badge template and related assignments deleted successfully",
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ─── USER: Badge Endpoints ───────────────────────────────────────────────────
+
+// Get current user's badges
+exports.getMyBadges = async (req, res) => {
+    try {
+        const badges = await getUserBadges(req.user.id);
+        res.status(200).json({ success: true, count: badges.length, badges });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Get any user's badges by userId
+exports.getUserBadges = async (req, res) => {
+    try {
+        const badges = await getUserBadges(req.params.userId);
+        res.status(200).json({ success: true, count: badges.length, badges });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Manually trigger badge check for a user (admin/debug)
+exports.triggerBadgeCheck = async (req, res) => {
+    try {
+        const { userId, milestoneType, currentValue } = req.body;
+
+        if (!userId || !milestoneType || currentValue === undefined) {
+            return res.status(400).json({
+                success: false,
+                message: "userId, milestoneType, and currentValue are required",
+            });
+        }
+
+        const newBadges = await checkAndAssignBadge(userId, milestoneType, currentValue);
+
+        res.status(200).json({
+            success: true,
+            message: newBadges.length
+                ? `${newBadges.length} new badge(s) assigned`
+                : "No new badges earned",
+            newBadges,
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

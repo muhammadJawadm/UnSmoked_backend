@@ -1,0 +1,7 @@
+.env
+uploads/
+node_modules/
+
+config/*.json
+
+firebase-adminsdk*.json
