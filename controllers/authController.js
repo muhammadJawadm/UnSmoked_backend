@@ -6,11 +6,27 @@ const Otp = require("../models/Otp");
 const generateToken = require("../utils/jwt");
 
 
-const sendOTPEmail = async (email, otp) => {
-    const transporter = nodemailer.createTransport({
-        host: process.env.MAIL_HOST,
-        port: Number(process.env.MAIL_PORT) || 587,
-        secure: Number(process.env.MAIL_PORT) === 465, // true for 465, false for 587
+const createTransporter = () => {
+    const host = process.env.MAIL_HOST || "";
+    const isGmail = host.toLowerCase().includes("gmail");
+
+    // Use Gmail service shorthand if host is Gmail (handles ports/TLS automatically)
+    if (isGmail) {
+        return nodemailer.createTransport({
+            service: "gmail",
+            auth: {
+                user: process.env.MAIL_USER,
+                pass: process.env.MAIL_PASS,
+            },
+        });
+    }
+
+    // For other SMTP providers, use explicit config
+    const port = Number(process.env.MAIL_PORT) || 465;
+    return nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
         auth: {
             user: process.env.MAIL_USER,
             pass: process.env.MAIL_PASS,
@@ -18,17 +34,22 @@ const sendOTPEmail = async (email, otp) => {
         tls: {
             rejectUnauthorized: false,
         },
-        connectionTimeout: 10000, // 10 seconds
+        connectionTimeout: 10000,
         greetingTimeout: 10000,
         socketTimeout: 15000,
     });
+};
+
+const sendOTPEmail = async (email, otp) => {
     const mailOptions = {
         from: process.env.MAIL_USER,
         to: email,
         subject: "Your OTP for verification",
         text: `Your OTP is ${otp}`,
     };
+
     try {
+        const transporter = createTransporter();
         const info = await transporter.sendMail(mailOptions);
         console.log("Email sent: " + info.response);
     } catch (error) {
