@@ -9,12 +9,18 @@ const generateToken = require("../utils/jwt");
 const sendOTPEmail = async (email, otp) => {
     const transporter = nodemailer.createTransport({
         host: process.env.MAIL_HOST,
-        port: process.env.MAIL_PORT,
-        secure: false,
+        port: Number(process.env.MAIL_PORT) || 587,
+        secure: Number(process.env.MAIL_PORT) === 465, // true for 465, false for 587
         auth: {
             user: process.env.MAIL_USER,
             pass: process.env.MAIL_PASS,
         },
+        tls: {
+            rejectUnauthorized: false,
+        },
+        connectionTimeout: 10000, // 10 seconds
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
     });
     const mailOptions = {
         from: process.env.MAIL_USER,
@@ -22,13 +28,13 @@ const sendOTPEmail = async (email, otp) => {
         subject: "Your OTP for verification",
         text: `Your OTP is ${otp}`,
     };
-    transporter.sendMail(mailOptions, (error, info) => {
-        if (error) {
-            console.log(error);
-        } else {
-            console.log("Email sent: " + info.response);
-        }
-    });
+    try {
+        const info = await transporter.sendMail(mailOptions);
+        console.log("Email sent: " + info.response);
+    } catch (error) {
+        console.error("Failed to send OTP email:", error.message);
+        // Don't throw — let the registration/flow continue even if email fails
+    }
 };
 
 exports.registerUser = async (req, res) => {
@@ -47,7 +53,12 @@ exports.registerUser = async (req, res) => {
 
         const existingUser = await User.findOne({ email });
         if (existingUser) {
-            return res.status(400).json({ message: "User already exists" });
+            return res.status(400).json({ message: "User already exists with this email" });
+        }
+
+        const existingPhone = await User.findOne({ phone });
+        if (existingPhone) {
+            return res.status(400).json({ message: "User already exists with this phone number" });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -82,6 +93,11 @@ exports.registerUser = async (req, res) => {
         });
 
     } catch (error) {
+        // Handle MongoDB duplicate key errors gracefully
+        if (error.code === 11000) {
+            const field = Object.keys(error.keyPattern)[0];
+            return res.status(400).json({ message: `A user with this ${field} already exists` });
+        }
         console.error(error);
         res.status(500).json({ message: "Internal server error", error });
     }
