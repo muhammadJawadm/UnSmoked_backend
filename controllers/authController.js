@@ -1,59 +1,27 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const otpGenerator = require("otp-generator");
-const nodemailer = require("nodemailer");
+const sgMail = require("@sendgrid/mail");
 const Otp = require("../models/Otp");
 const generateToken = require("../utils/jwt");
 
-
-const createTransporter = () => {
-    const host = process.env.MAIL_HOST || "";
-    const isGmail = host.toLowerCase().includes("gmail");
-
-    // Use Gmail service shorthand if host is Gmail (handles ports/TLS automatically)
-    if (isGmail) {
-        return nodemailer.createTransport({
-            service: "gmail",
-            auth: {
-                user: process.env.MAIL_USER,
-                pass: process.env.MAIL_PASS,
-            },
-        });
-    }
-
-    // For other SMTP providers, use explicit config
-    const port = Number(process.env.MAIL_PORT) || 465;
-    return nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: {
-            user: process.env.MAIL_USER,
-            pass: process.env.MAIL_PASS,
-        },
-        tls: {
-            rejectUnauthorized: false,
-        },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000,
-    });
-};
+// Initialize SendGrid
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 const sendOTPEmail = async (email, otp) => {
-    const mailOptions = {
-        from: process.env.MAIL_USER,
+    const msg = {
         to: email,
+        from: process.env.SENDGRID_FROM_EMAIL, // Must be a verified sender in SendGrid
         subject: "Your OTP for verification",
         text: `Your OTP is ${otp}`,
+        html: `<p>Your OTP is <strong>${otp}</strong></p>`,
     };
 
     try {
-        const transporter = createTransporter();
-        const info = await transporter.sendMail(mailOptions);
-        console.log("Email sent: " + info.response);
+        await sgMail.send(msg);
+        console.log("Email sent to:", email);
     } catch (error) {
-        console.error("Failed to send OTP email:", error.message);
+        console.error("Failed to send OTP email:", error.response?.body?.errors || error.message);
         // Don't throw — let the registration/flow continue even if email fails
     }
 };
