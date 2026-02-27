@@ -1,9 +1,18 @@
 const Blog = require("../models/Blog");
+const User = require("../models/User");
+
 
 exports.createBlog = async (req, res) => {
     try {
-        const { title, description, image = [] } = req.body;
         const userId = req.user.id;
+
+        // Check if the user is an admin
+        const user = await User.findById(userId).select("role");
+        if (!user || user.role !== "admin") {
+            return res.status(403).json({ success: false, message: "Only admins can create blogs" });
+        }
+
+        const { title, description, image = [] } = req.body;
         const blog = await Blog.create({ title, description, image, userId });
         res.status(201).json({ success: true, message: "Blog created successfully", blog });
     } catch (error) {
@@ -13,8 +22,32 @@ exports.createBlog = async (req, res) => {
 
 exports.getAllBlogs = async (req, res) => {
     try {
-        const blogs = await Blog.find().populate("userId", "name profile_image").sort({ createdAt: -1 });
-        res.status(200).json({ success: true, blogs });
+        const currentPage = Math.max(parseInt(req.query.page) || 1, 1);
+        const pageSize = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
+        const skip = (currentPage - 1) * pageSize;
+
+        const [results, totalItems] = await Promise.all([
+            Blog.find()
+                .populate("userId", "name profile_image")
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(pageSize),
+            Blog.countDocuments()
+        ]);
+
+        const totalPages = Math.ceil(totalItems / pageSize);
+
+        res.status(200).json({
+            success: true,
+            pagination: {
+                currentPage,
+                totalPages,
+                totalItems,
+                pageSize,
+                itemsCount: results.length,
+                results,
+            }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -34,13 +67,16 @@ exports.updateBlog = async (req, res) => {
         const { title, description, image } = req.body;
         const userId = req.user.id;
 
-        // First, check if blog exists and verify ownership
+        // Check if the user is an admin
+        const user = await User.findById(userId).select("role");
+        if (!user || user.role !== "admin") {
+            return res.status(403).json({ success: false, message: "Only admins can update blogs" });
+        }
+
+        // First, check if blog exists
         const blog = await Blog.findById(req.params.id);
         if (!blog) {
             return res.status(404).json({ success: false, message: "Blog not found" });
-        }
-        if (blog.userId.toString() !== userId) {
-            return res.status(403).json({ success: false, message: "You are not authorized to update this blog" });
         }
 
         // Now perform the update
@@ -56,13 +92,16 @@ exports.deleteBlog = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        // First, check if blog exists and verify ownership
+        // Check if the user is an admin
+        const user = await User.findById(userId).select("role");
+        if (!user || user.role !== "admin") {
+            return res.status(403).json({ success: false, message: "Only admins can delete blogs" });
+        }
+
+        // First, check if blog exists
         const blog = await Blog.findById(id);
         if (!blog) {
             return res.status(404).json({ success: false, message: "Blog not found" });
-        }
-        if (blog.userId.toString() !== userId) {
-            return res.status(403).json({ success: false, message: "You are not authorized to delete this blog" });
         }
 
         // Now delete the blog

@@ -1,4 +1,6 @@
 const Post = require("../models/Post");
+const Like = require("../models/Like");
+const Comment = require("../models/Comment");
 
 
 exports.createPost = async (req, res) => {
@@ -14,8 +16,59 @@ exports.createPost = async (req, res) => {
 
 exports.getAllPosts = async (req, res) => {
     try {
-        const posts = await Post.find().populate("userId", "name profile_image").sort({ createdAt: -1 });
-        res.status(200).json({ success: true, posts });
+        const currentPage = Math.max(parseInt(req.query.page) || 1, 1);
+        const pageSize = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
+        const skip = (currentPage - 1) * pageSize;
+        const currentUserId = req.user.id;
+
+        const [posts, totalItems] = await Promise.all([
+            Post.find()
+                .populate("userId", "name profile_image")
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(pageSize),
+            Post.countDocuments()
+        ]);
+
+        const postIds = posts.map(post => post._id);
+
+        // Get likes and comment counts in parallel
+        const [userLikes, commentCounts] = await Promise.all([
+            Like.find({
+                userId: currentUserId,
+                targetId: { $in: postIds },
+                targetType: "Post"
+            }).select("targetId"),
+            Comment.aggregate([
+                { $match: { targetId: { $in: postIds }, targetType: "Post" } },
+                { $group: { _id: "$targetId", count: { $sum: 1 } } }
+            ])
+        ]);
+
+        const likedPostIds = new Set(userLikes.map(like => like.targetId.toString()));
+        const commentCountMap = new Map(commentCounts.map(c => [c._id.toString(), c.count]));
+
+        // Add is_liked and comments_count to each post
+        const results = posts.map(post => {
+            const postObj = post.toObject();
+            postObj.is_liked = likedPostIds.has(post._id.toString());
+            postObj.comments_count = commentCountMap.get(post._id.toString()) || 0;
+            return postObj;
+        });
+
+        const totalPages = Math.ceil(totalItems / pageSize);
+
+        res.status(200).json({
+            success: true,
+            pagination: {
+                currentPage,
+                totalPages,
+                totalItems,
+                pageSize,
+                itemsCount: results.length,
+                results,
+            }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
