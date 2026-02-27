@@ -11,7 +11,8 @@ const {
     completeProfile,
     updateUser,
     deleteUser,
-    loginUser
+    loginUser,
+    changePassword
 } = require("../controllers/authController");
 const verifyToken = require("../middleware/verifyToken");
 // Authentication routes
@@ -27,6 +28,7 @@ router.post("/reset-password", resetPassword);
 
 router.get("/profile", verifyToken, getUserProfile);
 router.post("/complete-profile", verifyToken, completeProfile);
+router.put("/change-password", verifyToken, changePassword);
 
 // Admin routes (optional - add authentication middleware if needed)
 router.put("/:id", updateUser);

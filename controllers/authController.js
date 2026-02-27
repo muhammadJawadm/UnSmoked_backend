@@ -393,15 +393,62 @@ exports.updateUser = async (req, res) => {
             }
         }
 
-        // Hash password if provided
-        if (req.body.password) {
-            user.password = await bcrypt.hash(req.body.password, 10);
-        }
-
         user.updated_at = Date.now();
         await user.save();
 
         res.json({ message: "User updated successfully", user });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+// Change Password (authenticated user changes their own password)
+exports.changePassword = async (req, res) => {
+    const { id } = req.user; // From JWT token
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+
+    try {
+        // Validate required fields
+        if (!currentPassword) {
+            return res.status(400).json({ message: "Current password is required" });
+        }
+        if (!newPassword) {
+            return res.status(400).json({ message: "New password is required" });
+        }
+        if (!confirmPassword) {
+            return res.status(400).json({ message: "Please confirm your new password" });
+        }
+
+        // Validate new password matches confirm password
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({ message: "New password and confirm password do not match" });
+        }
+
+        // Find user
+        const user = await User.findById(id);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Verify current password is correct
+        const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isCurrentPasswordValid) {
+            return res.status(401).json({ message: "Current password is incorrect" });
+        }
+
+        // Check new password is not the same as the current password
+        const isSamePassword = await bcrypt.compare(newPassword, user.password);
+        if (isSamePassword) {
+            return res.status(400).json({ message: "New password cannot be the same as your current password" });
+        }
+
+        // Hash and save the new password
+        user.password = await bcrypt.hash(newPassword, 10);
+        user.updated_at = Date.now();
+        await user.save();
+
+        res.status(200).json({ message: "Password changed successfully" });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Internal server error" });
