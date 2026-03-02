@@ -34,7 +34,7 @@ exports.unlike = async (req, res) => {
 
 exports.countLikes = async (req, res) => {
     try {
-        const { targetType, targetId } = req.body;
+        const { targetType, targetId } = req.query;
         const count = await Like.countDocuments({ targetType, targetId });
         res.status(200).json({ success: true, count });
     } catch (error) {
@@ -44,7 +44,7 @@ exports.countLikes = async (req, res) => {
 
 exports.checkLikeStatus = async (req, res) => {
     try {
-        const { targetId, targetType } = req.body;
+        const { targetId, targetType } = req.query;
         const userId = req.user.id;
         const like = await Like.findOne({ userId, targetId, targetType });
         if (like) {

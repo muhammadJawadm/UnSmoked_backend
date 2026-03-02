@@ -13,7 +13,7 @@ exports.createComment = async (req, res) => {
 
 exports.getAllComments = async (req, res) => {
     try {
-        const { targetId, targetType } = req.body;
+        const { targetId, targetType } = req.query;
         if (!targetId || !targetType) {
             return res.status(400).json({ success: false, message: "targetId and targetType are required" });
         }
