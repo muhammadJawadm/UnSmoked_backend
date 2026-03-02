@@ -379,7 +379,7 @@ exports.updateUser = async (req, res) => {
         if (req.body.name) user.name = req.body.name;
         if (req.body.email) user.email = req.body.email;
         if (req.body.phone) user.phone = req.body.phone;
-        if (req.body.profile_image) user.profile_image = req.body.profile_image;
+        if (req.body.profile_picture) user.profile_image = req.body.profile_picture;
         if (req.body.cigarettes_per_day) user.cigarettes_per_day = req.body.cigarettes_per_day;
         if (req.body.cost) user.cost = req.body.cost;
         if (req.body.per) user.per = req.body.per;
