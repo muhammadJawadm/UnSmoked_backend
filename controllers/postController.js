@@ -1,6 +1,8 @@
 const Post = require("../models/Post");
 const Like = require("../models/Like");
 const Comment = require("../models/Comment");
+const PostHide = require("../models/PostHide");
+const PostReport = require("../models/PostReport");
 
 
 exports.createPost = async (req, res) => {
@@ -21,13 +23,28 @@ exports.getAllPosts = async (req, res) => {
         const skip = (currentPage - 1) * pageSize;
         const currentUserId = req.user.id;
 
+        // Get hidden and reported post IDs for the current user
+        const [hiddenPosts, reportedPosts] = await Promise.all([
+            PostHide.find({ userId: currentUserId }).select("postId -_id"),
+            PostReport.find({ userId: currentUserId }).select("postId -_id")
+        ]);
+
+        const excludedPostIds = [
+            ...hiddenPosts.map(h => h.postId),
+            ...reportedPosts.map(r => r.postId)
+        ];
+
+        const filter = excludedPostIds.length > 0
+            ? { _id: { $nin: excludedPostIds } }
+            : {};
+
         const [posts, totalItems] = await Promise.all([
-            Post.find()
+            Post.find(filter)
                 .populate("userId", "name profile_picture")
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(pageSize),
-            Post.countDocuments()
+            Post.countDocuments(filter)
         ]);
 
         const postIds = posts.map(post => post._id);

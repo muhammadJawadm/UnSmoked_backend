@@ -21,6 +21,8 @@ const challengesRoutes = require("./routes/challengesRoutes");
 const boardRoutes = require("./routes/boardRoutes");
 const competitionRoutes = require("./routes/competitionRoutes");
 const badgeRoutes = require("./routes/badgeRoutes");
+const postHideRoutes = require("./routes/postHideRoutes");
+const postReportRoutes = require("./routes/postReportRoutes");
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -48,6 +50,8 @@ app.use("/challenge-assignments", challengesRoutes);
 app.use("/boards", boardRoutes);
 app.use("/competitions", competitionRoutes);
 app.use("/badges", badgeRoutes);
+app.use("/post-hides", postHideRoutes);
+app.use("/post-reports", postReportRoutes);
 
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log("Connected to MongoDB successfully"))
