@@ -46,12 +46,14 @@ exports.getAllPosts = async (req, res) => {
         ]);
 
         const likedPostIds = new Set(userLikes.map(like => like.targetId.toString()));
+        const likeCountMap = new Map(userLikes.map(like => [like.targetId.toString(), like.count]));
         const commentCountMap = new Map(commentCounts.map(c => [c._id.toString(), c.count]));
 
         // Add is_liked and comments_count to each post
         const results = posts.map(post => {
             const postObj = post.toObject();
             postObj.is_liked = likedPostIds.has(post._id.toString());
+            postObj.likes_count = likeCountMap.get(post._id.toString()) || 0;
             postObj.comments_count = commentCountMap.get(post._id.toString()) || 0;
             return postObj;
         });
