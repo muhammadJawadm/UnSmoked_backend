@@ -5,18 +5,18 @@ exports.createMotivationalTip = async (req, res) => {
         const { tip, category, is_active } = req.body;
         const motivationalTip = new MotivationalTip({ tip, category, is_active });
         await motivationalTip.save();
-        res.status(201).json({ message: "Motivational tip created successfully", motivationalTip });
+        res.status(201).json({ success: true, message: "Motivational tip created successfully", motivationalTip });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
 exports.getAllMotivationalTips = async (req, res) => {
     try {
         const motivationalTips = await MotivationalTip.find();
-        res.status(200).json({ message: "Motivational tips fetched successfully", motivationalTips });
+        res.status(200).json({ success: true, message: "Motivational tips fetched successfully", motivationalTips });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -24,11 +24,11 @@ exports.getMotivationalTip = async (req, res) => {
     try {
         const motivationalTip = await MotivationalTip.findById(req.params.id);
         if (!motivationalTip) {
-            return res.status(404).json({ message: "Motivational tip not found" });
+            return res.status(404).json({ success: false, message: "Motivational tip not found" });
         }
-        res.status(200).json({ message: "Motivational tip fetched successfully", motivationalTip });
+        res.status(200).json({ success: true, message: "Motivational tip fetched successfully", motivationalTip });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -41,11 +41,11 @@ exports.updateMotivationalTip = async (req, res) => {
             { new: true }
         );
         if (!motivationalTip) {
-            return res.status(404).json({ message: "Motivational tip not found" });
+            return res.status(404).json({ success: false, message: "Motivational tip not found" });
         }
-        res.status(200).json({ message: "Motivational tip updated successfully", motivationalTip });
+        res.status(200).json({ success: true, message: "Motivational tip updated successfully", motivationalTip });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -53,10 +53,10 @@ exports.deleteMotivationalTip = async (req, res) => {
     try {
         const motivationalTip = await MotivationalTip.findByIdAndDelete(req.params.id);
         if (!motivationalTip) {
-            return res.status(404).json({ message: "Motivational tip not found" });
+            return res.status(404).json({ success: false, message: "Motivational tip not found" });
         }
-        res.status(200).json({ message: "Motivational tip deleted successfully" });
+        res.status(200).json({ success: true, message: "Motivational tip deleted successfully" });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };

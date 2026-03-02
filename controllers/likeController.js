@@ -20,7 +20,7 @@ exports.addLike = async (req, res) => {
 
 exports.unlike = async (req, res) => {
     try {
-        const { targetId, targetType } = req.body;
+        const { targetId, targetType } = req.query;
         const userId = req.user.id;
         const like = await Like.findOneAndDelete({ userId, targetId, targetType });
         if (!like) {

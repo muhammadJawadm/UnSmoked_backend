@@ -6,9 +6,9 @@ exports.createFeedback = async (req, res) => {
         const { message, rating } = req.body;
         const userId = req.user.id;
         const feedback = await Feedback.create({ message, rating, userId });
-        res.status(201).json({ message: "Feedback created successfully", feedback });
+        res.status(201).json({ success: true, message: "Feedback created successfully", feedback });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -16,9 +16,9 @@ exports.createFeedback = async (req, res) => {
 exports.getAllFeedback = async (req, res) => {
     try {
         const feedback = await Feedback.find();
-        res.status(200).json({ message: "Feedback fetched successfully", feedback });
+        res.status(200).json({ success: true, message: "Feedback fetched successfully", feedback });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -27,11 +27,11 @@ exports.getFeedbackById = async (req, res) => {
     try {
         const feedback = await Feedback.findById(req.params.id);
         if (!feedback) {
-            return res.status(404).json({ message: "Feedback not found" });
+            return res.status(404).json({ success: false, message: "Feedback not found" });
         }
-        res.status(200).json({ message: "Feedback fetched successfully", feedback });
+        res.status(200).json({ success: true, message: "Feedback fetched successfully", feedback });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -44,10 +44,10 @@ exports.updateFeedback = async (req, res) => {
         // First, check if feedback exists and verify ownership
         const feedback = await Feedback.findById(req.params.id);
         if (!feedback) {
-            return res.status(404).json({ message: "Feedback not found" });
+            return res.status(404).json({ success: false, message: "Feedback not found" });
         }
         if (feedback.userId.toString() !== userId) {
-            return res.status(403).json({ message: "You are not authorized to update this feedback" });
+            return res.status(403).json({ success: false, message: "You are not authorized to update this feedback" });
         }
 
         // Now perform the update
@@ -56,9 +56,9 @@ exports.updateFeedback = async (req, res) => {
             { message, rating },
             { new: true }
         );
-        res.status(200).json({ message: "Feedback updated successfully", feedback: updatedFeedback });
+        res.status(200).json({ success: true, message: "Feedback updated successfully", feedback: updatedFeedback });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -70,16 +70,16 @@ exports.deleteFeedback = async (req, res) => {
         // First, check if feedback exists and verify ownership
         const feedback = await Feedback.findById(req.params.id);
         if (!feedback) {
-            return res.status(404).json({ message: "Feedback not found" });
+            return res.status(404).json({ success: false, message: "Feedback not found" });
         }
         if (feedback.userId.toString() !== userId) {
-            return res.status(403).json({ message: "You are not authorized to delete this feedback" });
+            return res.status(403).json({ success: false, message: "You are not authorized to delete this feedback" });
         }
 
         // Now delete the feedback
         await Feedback.findByIdAndDelete(req.params.id);
-        res.status(200).json({ message: "Feedback deleted successfully" });
+        res.status(200).json({ success: true, message: "Feedback deleted successfully" });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };

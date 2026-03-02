@@ -5,7 +5,8 @@ exports.createComment = async (req, res) => {
         const { targetId, targetType, text } = req.body;
         const userId = req.user.id;
         const comment = await Comment.create({ userId, targetId, targetType, text });
-        res.status(201).json({ success: true, message: "Comment created successfully", comment });
+        const populatedComment = await Comment.findById(comment._id).populate("userId", "name profile_picture");
+        res.status(201).json({ success: true, message: "Comment created successfully", comment: populatedComment });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -17,8 +18,35 @@ exports.getAllComments = async (req, res) => {
         if (!targetId || !targetType) {
             return res.status(400).json({ success: false, message: "targetId and targetType are required" });
         }
-        const comments = await Comment.find({ targetId, targetType }).populate("userId", "name profile_picture").sort({ createdAt: -1 });
-        res.status(200).json({ success: true, comments });
+
+        const currentPage = Math.max(parseInt(req.query.page) || 1, 1);
+        const pageSize = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
+        const skip = (currentPage - 1) * pageSize;
+
+        const filter = { targetId, targetType };
+
+        const [results, totalItems] = await Promise.all([
+            Comment.find(filter)
+                .populate("userId", "name profile_picture")
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(pageSize),
+            Comment.countDocuments(filter)
+        ]);
+
+        const totalPages = Math.ceil(totalItems / pageSize);
+
+        res.status(200).json({
+            success: true,
+            pagination: {
+                currentPage,
+                totalPages,
+                totalItems,
+                pageSize,
+                itemsCount: results.length,
+                results,
+            }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -47,7 +75,7 @@ exports.updateComment = async (req, res) => {
             return res.status(404).json({ success: false, message: "Comment not found" });
         }
         if (comment.userId.toString() !== userId) {
-            return res.status(403).json({ message: "You are not authorized to update this comment" });
+            return res.status(403).json({ success: false, message: "You are not authorized to update this comment" });
         }
 
         // Now perform the update
@@ -68,7 +96,7 @@ exports.deleteComment = async (req, res) => {
             return res.status(404).json({ success: false, message: "Comment not found" });
         }
         if (comment.userId.toString() !== userId) {
-            return res.status(403).json({ message: "You are not authorized to delete this comment" });
+            return res.status(403).json({ success: false, message: "You are not authorized to delete this comment" });
         }
 
         // Now delete the comment

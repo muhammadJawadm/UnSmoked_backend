@@ -7,9 +7,9 @@ const createContact = async (req, res) => {
         const userId = req.user.id;
         const contact = new Contact({ userId, issue, status: "pending" });
         await contact.save();
-        res.status(201).json({ message: "Contact created successfully", contact });
+        res.status(201).json({ success: true, message: "Contact created successfully", contact });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -17,12 +17,12 @@ const createContact = async (req, res) => {
 const getContacts = async (req, res) => {
     try {
         if (req.user.role !== "admin") {
-            return res.status(403).json({ message: "Unauthorized" });
+            return res.status(403).json({ success: false, message: "Unauthorized" });
         }
         const contacts = await Contact.find().populate("userId", "name email").sort({ createdAt: -1 });
-        res.status(200).json({ message: "Contacts fetched successfully", contacts });
+        res.status(200).json({ success: true, message: "Contacts fetched successfully", contacts });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -31,11 +31,11 @@ const getContact = async (req, res) => {
     try {
         const contact = await Contact.findById(req.params.id).populate("userId", "name email");
         if (!contact) {
-            return res.status(404).json({ message: "Contact not found" });
+            return res.status(404).json({ success: false, message: "Contact not found" });
         }
-        res.status(200).json({ message: "Contact fetched successfully", contact });
+        res.status(200).json({ success: true, message: "Contact fetched successfully", contact });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -43,7 +43,7 @@ const getContact = async (req, res) => {
 const updateContact = async (req, res) => {
     try {
         if (req.user.role !== "admin") {
-            return res.status(403).json({ message: "Unauthorized" });
+            return res.status(403).json({ success: false, message: "Unauthorized" });
         }
         const { response, status } = req.body;
         const contact = await Contact.findByIdAndUpdate(
@@ -53,11 +53,11 @@ const updateContact = async (req, res) => {
         ).populate("userId", "name email");
 
         if (!contact) {
-            return res.status(404).json({ message: "Contact not found" });
+            return res.status(404).json({ success: false, message: "Contact not found" });
         }
-        res.status(200).json({ message: "Contact updated successfully", contact });
+        res.status(200).json({ success: true, message: "Contact updated successfully", contact });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -69,17 +69,17 @@ const deleteContact = async (req, res) => {
         // First, check if contact exists and verify ownership
         const contact = await Contact.findById(req.params.id);
         if (!contact) {
-            return res.status(404).json({ message: "Contact not found" });
+            return res.status(404).json({ success: false, message: "Contact not found" });
         }
         if (contact.userId.toString() !== userId) {
-            return res.status(403).json({ message: "You are not authorized to delete this contact" });
+            return res.status(403).json({ success: false, message: "You are not authorized to delete this contact" });
         }
 
         // Now delete the contact
         await Contact.findByIdAndDelete(req.params.id);
-        res.status(200).json({ message: "Contact deleted successfully" });
+        res.status(200).json({ success: true, message: "Contact deleted successfully" });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 

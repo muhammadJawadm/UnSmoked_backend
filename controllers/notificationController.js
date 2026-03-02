@@ -13,10 +13,10 @@ exports.sendNotification = async (req, res) => {
 
         // Validation
         if (!title || !body) {
-            return res.status(400).json({ message: "title and body are required" });
+            return res.status(400).json({ success: false, message: "title and body are required" });
         }
         if (!sendToAll && !rawUserIds) {
-            return res.status(400).json({ message: "Provide sendToAll or userIds (a single ID string or array of IDs)" });
+            return res.status(400).json({ success: false, message: "Provide sendToAll or userIds (a single ID string or array of IDs)" });
         }
 
         let mode, userId, userIds;
@@ -24,17 +24,17 @@ exports.sendNotification = async (req, res) => {
             mode = "broadcast";
         } else if (Array.isArray(rawUserIds)) {
             if (rawUserIds.length === 0) {
-                return res.status(400).json({ message: "userIds array must not be empty" });
+                return res.status(400).json({ success: false, message: "userIds array must not be empty" });
             }
             const invalidIds = rawUserIds.filter(id => !isValidId(id));
             if (invalidIds.length > 0) {
-                return res.status(400).json({ message: `Invalid user ID(s): ${invalidIds.join(", ")}` });
+                return res.status(400).json({ success: false, message: `Invalid user ID(s): ${invalidIds.join(", ")}` });
             }
             mode = "multi";
             userIds = rawUserIds;
         } else {
             if (!isValidId(rawUserIds)) {
-                return res.status(400).json({ message: `Invalid user ID: ${rawUserIds}` });
+                return res.status(400).json({ success: false, message: `Invalid user ID: ${rawUserIds}` });
             }
             mode = "single";
             userId = rawUserIds;
@@ -51,7 +51,7 @@ exports.sendNotification = async (req, res) => {
             }).select('fcm_tokens');
 
             if (users.length === 0) {
-                return res.status(404).json({ message: "No users with registered FCM tokens found" });
+                return res.status(404).json({ success: false, message: "No users with registered FCM tokens found" });
             }
 
             users.forEach(user => {
@@ -59,7 +59,7 @@ exports.sendNotification = async (req, res) => {
             });
 
             if (fcmTokens.length === 0) {
-                return res.status(400).json({ message: "No valid FCM tokens found" });
+                return res.status(400).json({ success: false, message: "No valid FCM tokens found" });
             }
 
             savedNotifications = await Notification.insertMany(
@@ -74,7 +74,7 @@ exports.sendNotification = async (req, res) => {
             }).select('fcm_tokens');
 
             if (users.length === 0) {
-                return res.status(404).json({ message: "None of the specified users have registered FCM tokens" });
+                return res.status(404).json({ success: false, message: "None of the specified users have registered FCM tokens" });
             }
 
             users.forEach(user => {
@@ -82,7 +82,7 @@ exports.sendNotification = async (req, res) => {
             });
 
             if (fcmTokens.length === 0) {
-                return res.status(400).json({ message: "No valid FCM tokens found for specified users" });
+                return res.status(400).json({ success: false, message: "No valid FCM tokens found for specified users" });
             }
 
             savedNotifications = await Notification.insertMany(
@@ -93,13 +93,13 @@ exports.sendNotification = async (req, res) => {
             // SINGLE USER MODE: Send to one specific user
             const user = await User.findById(userId);
             if (!user) {
-                return res.status(404).json({ message: "User not found" });
+                return res.status(404).json({ success: false, message: "User not found" });
             }
 
             fcmTokens = user.fcm_tokens.filter(token => token);
 
             if (fcmTokens.length === 0) {
-                return res.status(400).json({ message: "User has no registered FCM tokens" });
+                return res.status(400).json({ success: false, message: "User has no registered FCM tokens" });
             }
 
             const notification = new Notification({ userId, title, body, data: data || {} });
@@ -171,6 +171,7 @@ exports.sendNotification = async (req, res) => {
             // Send appropriate response
             if (mode === "single") {
                 res.status(201).json({
+                    success: true,
                     message: response.successCount > 0 ? "Notification sent successfully" : "Failed to send notification",
                     notification: savedNotifications[0],
                     successCount: response.successCount,
@@ -179,6 +180,7 @@ exports.sendNotification = async (req, res) => {
                 });
             } else {
                 res.status(201).json({
+                    success: true,
                     message: `${mode === "broadcast" ? "Broadcast" : "Multi-user"} notification sent successfully`,
                     usersTargeted: users.length,
                     devicesTargeted: fcmTokens.length,
@@ -195,13 +197,13 @@ exports.sendNotification = async (req, res) => {
 
             console.error("FCM Error:", fcmError);
             res.status(500).json({
-                message: `Failed to send [${mode}] notification via FCM`,
-                error: fcmError.message
+                success: false,
+                message: `Failed to send [${mode}] notification via FCM`
             });
         }
     } catch (error) {
         console.error("Error processing notification:", error);
-        res.status(500).json({ message: "Error processing notification", error: error.message });
+        res.status(500).json({ success: false, message: "Error processing notification" });
     }
 };
 
@@ -222,6 +224,7 @@ exports.getNotifications = async (req, res) => {
         const total = await Notification.countDocuments({ userId });
 
         res.status(200).json({
+            success: true,
             notifications,
             pagination: {
                 total,
@@ -232,7 +235,7 @@ exports.getNotifications = async (req, res) => {
         });
     } catch (error) {
         console.error("Error fetching notifications:", error);
-        res.status(500).json({ message: "Error fetching notifications", error: error.message });
+        res.status(500).json({ success: false, message: "Error fetching notifications" });
     }
 };
 
@@ -249,12 +252,12 @@ exports.deleteNotification = async (req, res) => {
         });
 
         if (!notification) {
-            return res.status(404).json({ message: "Notification not found" });
+            return res.status(404).json({ success: false, message: "Notification not found" });
         }
 
-        res.status(200).json({ message: "Notification deleted successfully" });
+        res.status(200).json({ success: true, message: "Notification deleted successfully" });
     } catch (error) {
         console.error("Error deleting notification:", error);
-        res.status(500).json({ message: "Error deleting notification", error: error.message });
+        res.status(500).json({ success: false, message: "Error deleting notification" });
     }
 };

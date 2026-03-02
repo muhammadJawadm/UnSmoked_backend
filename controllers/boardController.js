@@ -43,7 +43,7 @@ exports.markTodayStatus = async (req, res) => {
         const { smoked } = req.body;
 
         if (typeof smoked !== "boolean") {
-            return res.status(400).json({ message: "valid smoked status is required" });
+            return res.status(400).json({ success: false, message: "valid smoked status is required" });
         }
 
         const board = await Board.findOne({ userId });

@@ -10,7 +10,7 @@ exports.createMessage = async (req, res) => {
         // Verify chat exists
         const chatExists = await Chat.findById(chat);
         if (!chatExists) {
-            return res.status(404).json({ message: "Chat not found" });
+            return res.status(404).json({ success: false, message: "Chat not found" });
         }
 
         const newMessage = new Message({
@@ -26,9 +26,9 @@ exports.createMessage = async (req, res) => {
         chatExists.updatedAt = new Date();
         await chatExists.save();
 
-        res.status(201).json({ message: "Message created successfully", data: newMessage });
+        res.status(201).json({ success: true, message: "Message created successfully", data: newMessage });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -36,9 +36,9 @@ exports.createMessage = async (req, res) => {
 exports.getMessagesByChatId = async (req, res) => {
     try {
         const messages = await Message.find({ chat: req.params.chatId }).sort({ createdAt: 1 });
-        res.status(200).json(messages);
+        res.status(200).json({ success: true, messages });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -47,11 +47,11 @@ exports.deleteMessage = async (req, res) => {
     try {
         const message = await Message.findByIdAndDelete(req.params.id);
         if (!message) {
-            return res.status(404).json({ message: "Message not found" });
+            return res.status(404).json({ success: false, message: "Message not found" });
         }
-        res.status(200).json({ message: "Message deleted successfully" });
+        res.status(200).json({ success: true, message: "Message deleted successfully" });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -64,7 +64,7 @@ exports.sendToOpenAI = async (req, res) => {
         // Verify chat exists
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            return res.status(404).json({ message: "Chat not found" });
+            return res.status(404).json({ success: false, message: "Chat not found" });
         }
 
         // Store user's message
@@ -123,12 +123,13 @@ exports.sendToOpenAI = async (req, res) => {
         await chat.save();
 
         res.status(200).json({
+            success: true,
             userMessage: userMsg,
             aiMessage: aiMsg,
             chatTitle: chat.title,
             chatPreview: chat.message
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };

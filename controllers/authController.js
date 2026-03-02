@@ -31,23 +31,23 @@ exports.registerUser = async (req, res) => {
     try {
 
         if (!email) {
-            return res.status(400).json({ message: "Email is required" });
+            return res.status(400).json({ success: false, message: "Email is required" });
         }
 
         if (!phone) {
-            return res.status(400).json({ message: "Phone is required" });
+            return res.status(400).json({ success: false, message: "Phone is required" });
         }
 
         email = email.trim().toLowerCase();
 
         const existingUser = await User.findOne({ email });
         if (existingUser) {
-            return res.status(400).json({ message: "User already exists with this email" });
+            return res.status(400).json({ success: false, message: "User already exists with this email" });
         }
 
         const existingPhone = await User.findOne({ phone });
         if (existingPhone) {
-            return res.status(400).json({ message: "User already exists with this phone number" });
+            return res.status(400).json({ success: false, message: "User already exists with this phone number" });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -70,6 +70,7 @@ exports.registerUser = async (req, res) => {
         const token = generateToken(newUser._id);
 
         res.status(201).json({
+            success: true,
             message: "User registered successfully",
             token,
             user: {
@@ -85,10 +86,10 @@ exports.registerUser = async (req, res) => {
         // Handle MongoDB duplicate key errors gracefully
         if (error.code === 11000) {
             const field = Object.keys(error.keyPattern)[0];
-            return res.status(400).json({ message: `A user with this ${field} already exists` });
+            return res.status(400).json({ success: false, message: `A user with this ${field} already exists` });
         }
         console.error(error);
-        res.status(500).json({ message: "Internal server error", error });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
 
@@ -97,16 +98,16 @@ exports.verifyOtp = async (req, res) => {
     try {
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
         const otpEntry = await Otp.findOne({ userId: user._id });
         if (!otpEntry) {
-            return res.status(404).json({ message: "OTP not found" });
+            return res.status(404).json({ success: false, message: "OTP not found" });
         }
 
         if (otpEntry.otp !== otp || otpEntry.expiresAt < Date.now()) {
-            return res.status(400).json({ message: "Invalid or expired OTP" });
+            return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
         }
 
         user.is_verified = true;
@@ -114,10 +115,10 @@ exports.verifyOtp = async (req, res) => {
 
         await Otp.deleteOne({ userId: user._id });
 
-        res.status(200).json({ message: "OTP verified successfully" });
+        res.status(200).json({ success: true, message: "OTP verified successfully" });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Internal server error", error });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
 
@@ -126,17 +127,17 @@ exports.resendOtp = async (req, res) => {
     const { email } = req.body;
     try {
         if (!email) {
-            return res.status(400).json({ message: "Email is required" });
+            return res.status(400).json({ success: false, message: "Email is required" });
         }
 
         const user = await User.findOne({ email: email.trim().toLowerCase() });
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
         // If already verified, no need to resend
         if (user.is_verified) {
-            return res.status(400).json({ message: "Account is already verified. Please login." });
+            return res.status(400).json({ success: false, message: "Account is already verified. Please login." });
         }
 
         // Delete any existing OTP for this user
@@ -153,10 +154,10 @@ exports.resendOtp = async (req, res) => {
         // Send email
         await sendOTPEmail(email, otp);
 
-        res.status(200).json({ message: "OTP resent successfully. Please check your email." });
+        res.status(200).json({ success: true, message: "OTP resent successfully. Please check your email." });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Internal server error", error });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
 
@@ -167,7 +168,7 @@ exports.forgotPassword = async (req, res) => {
         // Find user by email
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
         // Delete any existing OTP for this user
@@ -184,10 +185,10 @@ exports.forgotPassword = async (req, res) => {
         // Send OTP email
         await sendOTPEmail(email, otp);
 
-        res.status(200).json({ message: "OTP sent to your email" });
+        res.status(200).json({ success: true, message: "OTP sent to your email" });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Internal server error", error });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
 
@@ -199,28 +200,29 @@ exports.verifyResetOTP = async (req, res) => {
         // Find user
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
         // Find OTP
         const otpEntry = await Otp.findOne({ userId: user._id });
         if (!otpEntry) {
-            return res.status(404).json({ message: "OTP not found or expired" });
+            return res.status(404).json({ success: false, message: "OTP not found or expired" });
         }
 
         // Verify OTP
         if (otpEntry.otp !== otp || otpEntry.expiresAt < Date.now()) {
-            return res.status(400).json({ message: "Invalid or expired OTP" });
+            return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
         }
 
         // OTP is valid - don't delete, keep it for password reset
         res.status(200).json({
+            success: true,
             message: "OTP verified successfully. You can now reset your password.",
             resetToken: user._id
         });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Internal server error", error });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
 
@@ -230,25 +232,25 @@ exports.resetPassword = async (req, res) => {
     try {
         // Validate password match
         if (password !== confirmPassword) {
-            return res.status(400).json({ message: "Passwords do not match" });
+            return res.status(400).json({ success: false, message: "Passwords do not match" });
         }
 
         // Find user
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
         // Check if OTP exists and is still valid (user must have verified OTP in step 2)
         const otpEntry = await Otp.findOne({ userId: user._id });
         if (!otpEntry) {
-            return res.status(400).json({ message: "Please verify OTP first before resetting password" });
+            return res.status(400).json({ success: false, message: "Please verify OTP first before resetting password" });
         }
 
         // Check OTP hasn't expired
         if (otpEntry.expiresAt < Date.now()) {
             await Otp.deleteOne({ userId: user._id });
-            return res.status(400).json({ message: "OTP expired. Please request a new one." });
+            return res.status(400).json({ success: false, message: "OTP expired. Please request a new one." });
         }
 
         // Hash new password
@@ -262,10 +264,10 @@ exports.resetPassword = async (req, res) => {
         // Delete OTP (cleanup - only deleted once here)
         await Otp.deleteOne({ userId: user._id });
 
-        res.status(200).json({ message: "Password reset successfully. You can now login with your new password." });
+        res.status(200).json({ success: true, message: "Password reset successfully. You can now login with your new password." });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Internal server error", error });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
 
@@ -276,17 +278,17 @@ exports.loginUser = async (req, res) => {
         // Find user by email
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
-            return res.status(401).json({ message: "Invalid credentials" });
+            return res.status(401).json({ success: false, message: "Invalid credentials" });
         }
 
         // Check if user is verified
         if (!user.is_verified) {
-            return res.status(403).json({ message: "Please verify your email first" });
+            return res.status(403).json({ success: false, message: "Please verify your email first" });
         }
 
 
@@ -296,12 +298,13 @@ exports.loginUser = async (req, res) => {
 
 
         res.status(200).json({
+            success: true,
             message: "Login successful",
             token,
         });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Internal server error" });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
 
@@ -321,7 +324,7 @@ exports.completeProfile = async (req, res) => {
     try {
         const user = await User.findById(id);
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
         // Update profile fields (only if provided)
@@ -341,12 +344,13 @@ exports.completeProfile = async (req, res) => {
         await user.save();
 
         res.status(200).json({
+            success: true,
             message: "Profile updated successfully",
             user
         });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Internal server error" });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
 
@@ -357,13 +361,13 @@ exports.getUserProfile = async (req, res) => {
     try {
         const user = await User.findById(id).select("-password");
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        res.status(200).json({ user });
+        res.status(200).json({ success: true, user });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Internal server error" });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
 
@@ -372,7 +376,7 @@ exports.updateUser = async (req, res) => {
     try {
         const user = await User.findById(req.params.id);
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
         // Only update provided fields
@@ -396,10 +400,10 @@ exports.updateUser = async (req, res) => {
         user.updated_at = Date.now();
         await user.save();
 
-        res.json({ message: "User updated successfully", user });
+        res.json({ success: true, message: "User updated successfully", user });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Internal server error" });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
 
@@ -411,36 +415,36 @@ exports.changePassword = async (req, res) => {
     try {
         // Validate required fields
         if (!currentPassword) {
-            return res.status(400).json({ message: "Current password is required" });
+            return res.status(400).json({ success: false, message: "Current password is required" });
         }
         if (!newPassword) {
-            return res.status(400).json({ message: "New password is required" });
+            return res.status(400).json({ success: false, message: "New password is required" });
         }
         if (!confirmPassword) {
-            return res.status(400).json({ message: "Please confirm your new password" });
+            return res.status(400).json({ success: false, message: "Please confirm your new password" });
         }
 
         // Validate new password matches confirm password
         if (newPassword !== confirmPassword) {
-            return res.status(400).json({ message: "New password and confirm password do not match" });
+            return res.status(400).json({ success: false, message: "New password and confirm password do not match" });
         }
 
         // Find user
         const user = await User.findById(id);
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
         // Verify current password is correct
         const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
         if (!isCurrentPasswordValid) {
-            return res.status(401).json({ message: "Current password is incorrect" });
+            return res.status(401).json({ success: false, message: "Current password is incorrect" });
         }
 
         // Check new password is not the same as the current password
         const isSamePassword = await bcrypt.compare(newPassword, user.password);
         if (isSamePassword) {
-            return res.status(400).json({ message: "New password cannot be the same as your current password" });
+            return res.status(400).json({ success: false, message: "New password cannot be the same as your current password" });
         }
 
         // Hash and save the new password
@@ -448,10 +452,10 @@ exports.changePassword = async (req, res) => {
         user.updated_at = Date.now();
         await user.save();
 
-        res.status(200).json({ message: "Password changed successfully" });
+        res.status(200).json({ success: true, message: "Password changed successfully" });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Internal server error" });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
 
@@ -461,17 +465,17 @@ exports.deleteUser = async (req, res) => {
         const userId = req.user.id;
         const user = await User.findById(req.params.id);
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(404).json({ success: false, message: "User not found" });
         }
         if (user.id != userId) {
-            return res.status(403).json({ message: "You are not authorized to delete this user" });
+            return res.status(403).json({ success: false, message: "You are not authorized to delete this user" });
         }
 
         await User.findByIdAndDelete(req.params.id);
 
-        res.json({ message: "User deleted successfully" });
+        res.json({ success: true, message: "User deleted successfully" });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Internal server error" });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };

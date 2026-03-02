@@ -6,9 +6,9 @@ exports.createChat = async (req, res) => {
     try {
         const chat = new Chat({ user: req.user.id });
         await chat.save();
-        res.status(201).json({ message: "Chat created successfully", chat });
+        res.status(201).json({ success: true, message: "Chat created successfully", chat });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -16,12 +16,12 @@ exports.createChat = async (req, res) => {
 exports.getAllChats = async (req, res) => {
     try {
         if (req.user.role !== "admin") {
-            return res.status(403).json({ message: "Unauthorized" });
+            return res.status(403).json({ success: false, message: "Unauthorized" });
         }
         const chats = await Chat.find().populate("user", "name email");
-        res.status(200).json(chats);
+        res.status(200).json({ success: true, chats });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -29,9 +29,9 @@ exports.getAllChats = async (req, res) => {
 exports.getUserChats = async (req, res) => {
     try {
         const chats = await Chat.find({ user: req.user.id }).sort({ updatedAt: -1 });
-        res.status(200).json(chats);
+        res.status(200).json({ success: true, chats });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -40,15 +40,15 @@ exports.getChatById = async (req, res) => {
     try {
         const chat = await Chat.findById(req.params.id).populate("user", "name email");
         if (!chat) {
-            return res.status(404).json({ message: "Chat not found" });
+            return res.status(404).json({ success: false, message: "Chat not found" });
         }
 
         // Get all messages for this chat
         const messages = await Message.find({ chat: req.params.id }).sort({ createdAt: 1 });
 
-        res.status(200).json({ chat, messages });
+        res.status(200).json({ success: true, chat, messages });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -57,7 +57,7 @@ exports.deleteChat = async (req, res) => {
     try {
         const chat = await Chat.findById(req.params.id);
         if (!chat) {
-            return res.status(404).json({ message: "Chat not found" });
+            return res.status(404).json({ success: false, message: "Chat not found" });
         }
 
         // Delete all messages in this chat
@@ -66,8 +66,8 @@ exports.deleteChat = async (req, res) => {
         // Delete the chat
         await Chat.findByIdAndDelete(req.params.id);
 
-        res.status(200).json({ message: "Chat and all messages deleted successfully" });
+        res.status(200).json({ success: true, message: "Chat and all messages deleted successfully" });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ success: false, message: error.message });
     }
 };
