@@ -17,7 +17,7 @@ exports.getAllComments = async (req, res) => {
         if (!targetId || !targetType) {
             return res.status(400).json({ success: false, message: "targetId and targetType are required" });
         }
-        const comments = await Comment.find({ targetId, targetType }).populate("userId", "name profile_image").sort({ createdAt: -1 });
+        const comments = await Comment.find({ targetId, targetType }).populate("userId", "name profile_picture").sort({ createdAt: -1 });
         res.status(200).json({ success: true, comments });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -26,7 +26,7 @@ exports.getAllComments = async (req, res) => {
 
 exports.getCommentById = async (req, res) => {
     try {
-        const comment = await Comment.findById(req.params.id).populate("userId", "name profile_image");
+        const comment = await Comment.findById(req.params.id).populate("userId", "name profile_picture");
         if (!comment) {
             return res.status(404).json({ success: false, message: "Comment not found" });
         }

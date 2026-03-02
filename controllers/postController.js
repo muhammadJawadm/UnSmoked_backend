@@ -23,7 +23,7 @@ exports.getAllPosts = async (req, res) => {
 
         const [posts, totalItems] = await Promise.all([
             Post.find()
-                .populate("userId", "name profile_image")
+                .populate("userId", "name profile_picture")
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(pageSize),
@@ -78,7 +78,7 @@ exports.getAllPosts = async (req, res) => {
 
 exports.getPostById = async (req, res) => {
     try {
-        const post = await Post.findById(req.params.id).populate("userId", "name email profile_image");
+        const post = await Post.findById(req.params.id).populate("userId", "name email profile_picture");
         if (!post) {
             return res.status(404).json({ success: false, message: "Post not found" });
         }

@@ -334,7 +334,7 @@ exports.completeProfile = async (req, res) => {
 
         // Accept profile picture URL from frontend (they handle Cloudinary upload)
         if (profile_picture) {
-            user.profile_image = profile_picture;
+            user.profile_picture = profile_picture;
         }
 
         user.updated_at = Date.now();
@@ -379,7 +379,7 @@ exports.updateUser = async (req, res) => {
         if (req.body.name) user.name = req.body.name;
         if (req.body.email) user.email = req.body.email;
         if (req.body.phone) user.phone = req.body.phone;
-        if (req.body.profile_picture) user.profile_image = req.body.profile_picture;
+        if (req.body.profile_picture) user.profile_picture = req.body.profile_picture;
         if (req.body.cigarettes_per_day) user.cigarettes_per_day = req.body.cigarettes_per_day;
         if (req.body.cost) user.cost = req.body.cost;
         if (req.body.per) user.per = req.body.per;

@@ -67,8 +67,8 @@ exports.assignChallenge = async (req, res) => {
         if (type === 2) {
             const assignment = await Challenges.create({ ...assignmentData, assignedTo });
             const populated = await Challenges.findById(assignment._id)
-                .populate("assignedBy", "name profile_image")
-                .populate("assignedTo", "name profile_image");
+                .populate("assignedBy", "name profile_picture")
+                .populate("assignedTo", "name profile_picture");
 
             return res.status(201).json({
                 success: true,
@@ -89,8 +89,8 @@ exports.assignChallenge = async (req, res) => {
             const populated = await Challenges.find({
                 _id: { $in: createdAssignments.map((a) => a._id) },
             })
-                .populate("assignedBy", "name profile_image")
-                .populate("assignedTo", "name profile_image");
+                .populate("assignedBy", "name profile_picture")
+                .populate("assignedTo", "name profile_picture");
 
             return res.status(201).json({
                 success: true,
@@ -120,8 +120,8 @@ exports.getMyOngoing = async (req, res) => {
             status: "pending",
             moderationStatus: { $ne: "removed" },
         })
-            .populate("assignedBy", "name profile_image")
-            .populate("winner", "name profile_image")
+            .populate("assignedBy", "name profile_picture")
+            .populate("winner", "name profile_picture")
             .sort({ createdAt: -1 });
 
         res.status(200).json({ success: true, challenges });
@@ -145,8 +145,8 @@ exports.getMyHistory = async (req, res) => {
         if (status) filter.status = status;
 
         const challenges = await Challenges.find(filter)
-            .populate("assignedBy", "name profile_image")
-            .populate("winner", "name profile_image")
+            .populate("assignedBy", "name profile_picture")
+            .populate("winner", "name profile_picture")
             .sort({ createdAt: -1 })
             .limit(limit);
 
@@ -238,8 +238,8 @@ exports.completeChallenge = async (req, res) => {
         newBadges.push(...milestoneBadges);
 
         const populated = await Challenges.findById(challenge._id)
-            .populate("assignedBy", "name profile_image")
-            .populate("winner", "name profile_image");
+            .populate("assignedBy", "name profile_picture")
+            .populate("winner", "name profile_picture");
 
         res.status(200).json({
             success: true,
@@ -264,9 +264,9 @@ exports.getGroupChallenge = async (req, res) => {
         }
 
         const assignments = await Challenges.find({ groupId })
-            .populate("assignedBy", "name profile_image")
-            .populate("assignedTo", "name profile_image")
-            .populate("winner", "name profile_image")
+            .populate("assignedBy", "name profile_picture")
+            .populate("assignedTo", "name profile_picture")
+            .populate("winner", "name profile_picture")
             .sort({ completedAt: 1 }); // earliest completed first
 
         if (!assignments.length) {

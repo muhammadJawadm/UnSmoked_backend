@@ -28,7 +28,7 @@ exports.getAllBlogs = async (req, res) => {
 
         const [results, totalItems] = await Promise.all([
             Blog.find()
-                .populate("userId", "name profile_image")
+                .populate("userId", "name profile_picture")
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(pageSize),
@@ -55,7 +55,7 @@ exports.getAllBlogs = async (req, res) => {
 
 exports.getBlogById = async (req, res) => {
     try {
-        const blog = await Blog.findById(req.params.id).populate("userId", "name profile_image");
+        const blog = await Blog.findById(req.params.id).populate("userId", "name profile_picture");
         res.status(200).json({ success: true, blog });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

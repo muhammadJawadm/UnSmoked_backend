@@ -21,7 +21,7 @@ exports.createTask = async (req, res) => {
 exports.getAllTasks = async (req, res) => {
     try {
         const tasks = await Task.find()
-            .populate("userId", "name profile_image")
+            .populate("userId", "name profile_picture")
             .populate("categoryId", "name")
             .sort({ createdAt: -1 });
         res.status(200).json({ success: true, tasks });
@@ -33,7 +33,7 @@ exports.getAllTasks = async (req, res) => {
 exports.getTaskById = async (req, res) => {
     try {
         const task = await Task.findById(req.params.id)
-            .populate("userId", "name profile_image")
+            .populate("userId", "name profile_picture")
             .populate("categoryId", "name");
         if (!task) {
             return res.status(404).json({ success: false, message: "Task not found" });
