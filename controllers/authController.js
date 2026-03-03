@@ -403,6 +403,55 @@ exports.getUserProfile = async (req, res) => {
     }
 };
 
+// Get any user's profile by ID
+exports.getUserById = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const user = await User.findById(id)
+            .select("name email phone profile_picture about_me cigarettes_per_day cost per amount_of_cigarettes_per_pack health_goal badges createdAt")
+            .populate("badges");
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        // Fetch user progress (XP, level, challenges completed)
+        let progress = await UserProgress.findOne({ userId: id });
+        if (!progress) {
+            progress = { xp: 0, level: 1, challengesCompleted: 0 };
+        }
+
+        const xpForNextLevel = progress.level * 500;
+        const xpProgress = progress.xp % 500;
+
+        // Fetch user overview
+        const overview = await getUserOverview(id);
+
+        res.status(200).json({
+            success: true,
+            user: {
+                ...user.toObject(),
+                xp: progress.xp,
+                level: progress.level,
+                challengesCompleted: progress.challengesCompleted,
+                xpForNextLevel,
+                xpProgress,
+                overview: {
+                    cigarettesAvoided: overview.cigarettesAvoided,
+                    lifeRegained: overview.lifeRegained,
+                    moneySaved: overview.moneySaved,
+                    lungsHealth: overview.lungsHealth,
+                    overallHealth: overview.overallHealth,
+                },
+            }
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal server error" });
+    }
+};
+
 // Update user (admin function - be careful with this)
 exports.updateUser = async (req, res) => {
     try {
