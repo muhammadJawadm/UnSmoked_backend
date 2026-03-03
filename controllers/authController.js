@@ -4,6 +4,9 @@ const otpGenerator = require("otp-generator");
 const sgMail = require("@sendgrid/mail");
 const Otp = require("../models/Otp");
 const generateToken = require("../utils/jwt");
+const UserProgress = require("../models/UserProgress");
+const { calculateLevel } = require("../utils/xpSystem");
+const { getUserOverview } = require("../utils/overviewSystem");
 
 // Initialize SendGrid
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
@@ -359,12 +362,41 @@ exports.getUserProfile = async (req, res) => {
     const { id } = req.user; // From JWT token
 
     try {
-        const user = await User.findById(id).select("-password");
+        const user = await User.findById(id).select("-password").populate("badges");
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        res.status(200).json({ success: true, user });
+        // Fetch user progress (XP, level, challenges completed)
+        let progress = await UserProgress.findOne({ userId: id });
+        if (!progress) {
+            progress = { xp: 0, level: 1, challengesCompleted: 0 };
+        }
+
+        const xpForNextLevel = progress.level * 500;
+        const xpProgress = progress.xp % 500;
+
+        // Fetch user overview (cigarettes avoided, life regained, money saved, health)
+        const overview = await getUserOverview(id);
+
+        res.status(200).json({
+            success: true,
+            user: {
+                ...user.toObject(),
+                xp: progress.xp,
+                level: progress.level,
+                challengesCompleted: progress.challengesCompleted,
+                xpForNextLevel,
+                xpProgress,
+                overview: {
+                    cigarettesAvoided: overview.cigarettesAvoided,
+                    lifeRegained: overview.lifeRegained,
+                    moneySaved: overview.moneySaved,
+                    lungsHealth: overview.lungsHealth,
+                    overallHealth: overview.overallHealth,
+                },
+            }
+        });
     } catch (error) {
         console.error(error);
         res.status(500).json({ success: false, message: "Internal server error" });
