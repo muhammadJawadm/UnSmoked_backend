@@ -356,6 +356,172 @@ exports.getUserOverviewStats = async (req, res) => {
 };
 
 // ═══════════════════════════════════════════
+// STATS API — day / week / year
+// GET /boards/stats?type=day|week|year
+// ═══════════════════════════════════════════
+
+exports.getStats = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const type = (req.query.type || "day").toLowerCase();
+
+        if (!["day", "week", "year"].includes(type)) {
+            return res.status(400).json({ success: false, message: "type must be 'day', 'week', or 'year'" });
+        }
+
+        const now = new Date();
+        const todayUTC = getTodayDate();
+
+        // ─── DAY: hourly breakdown of today ───
+        if (type === "day") {
+            const dailyBoard = await DailyBoard.findOne({ userId, date: todayUTC });
+
+            if (!dailyBoard) {
+                return res.status(200).json({
+                    success: true,
+                    type: "day",
+                    date: todayUTC,
+                    hours: [],
+                    total: { cigarettesAvoided: 0, cigarettesSmoked: 0, totalCigarettes: 0 },
+                });
+            }
+
+            // Distribute cigarette slots evenly across 24 hours
+            // Each slot index maps to: hour = floor(index / totalSlots * 24)
+            const totalSlots = dailyBoard.smokes.length;
+            const hourlyMap = {};
+
+            dailyBoard.smokes.forEach((status, index) => {
+                const hour = Math.floor((index / totalSlots) * 24);
+                if (!hourlyMap[hour]) {
+                    hourlyMap[hour] = { hour, cigarettesAvoided: 0, cigarettesSmoked: 0, totalCigarettes: 0 };
+                }
+                if (status === "unsmoked") {
+                    hourlyMap[hour].cigarettesAvoided += 1;
+                    hourlyMap[hour].totalCigarettes += 1;
+                } else if (status === "smoked") {
+                    hourlyMap[hour].cigarettesSmoked += 1;
+                    hourlyMap[hour].totalCigarettes += 1;
+                }
+            });
+
+            // Return all 24 hours (zero-fill missing ones)
+            const hours = Array.from({ length: 24 }, (_, i) => {
+                return hourlyMap[i] || { hour: i, cigarettesAvoided: 0, cigarettesSmoked: 0, totalCigarettes: 0 };
+            });
+
+            return res.status(200).json({
+                success: true,
+                type: "day",
+                date: todayUTC,
+                hours,
+                total: {
+                    cigarettesAvoided: dailyBoard.cigarettesAvoided,
+                    cigarettesSmoked: dailyBoard.cigarettesSmoked,
+                    totalCigarettes: dailyBoard.cigarettesAvoided + dailyBoard.cigarettesSmoked,
+                },
+            });
+        }
+
+        // ─── WEEK: each of the last 7 days ───
+        if (type === "week") {
+            const days = [];
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
+                days.push(d);
+            }
+
+            const dailyBoards = await DailyBoard.find({
+                userId,
+                date: { $gte: days[0], $lte: days[days.length - 1] },
+            });
+
+            const boardByDate = {};
+            dailyBoards.forEach((db) => {
+                const key = db.date.toISOString().split("T")[0];
+                boardByDate[key] = db;
+            });
+
+            const weekData = days.map((d) => {
+                const key = d.toISOString().split("T")[0];
+                const db = boardByDate[key];
+                return {
+                    date: d,
+                    dayName: d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" }),
+                    cigarettesAvoided: db ? db.cigarettesAvoided : 0,
+                    cigarettesSmoked: db ? db.cigarettesSmoked : 0,
+                    totalCigarettes: db ? db.cigarettesAvoided + db.cigarettesSmoked : 0,
+                };
+            });
+
+            const weekTotal = weekData.reduce(
+                (acc, d) => {
+                    acc.cigarettesAvoided += d.cigarettesAvoided;
+                    acc.cigarettesSmoked += d.cigarettesSmoked;
+                    acc.totalCigarettes += d.totalCigarettes;
+                    return acc;
+                },
+                { cigarettesAvoided: 0, cigarettesSmoked: 0, totalCigarettes: 0 }
+            );
+
+            return res.status(200).json({
+                success: true,
+                type: "week",
+                days: weekData,
+                total: weekTotal,
+            });
+        }
+
+        // ─── YEAR: each month of the current year ───
+        if (type === "year") {
+            const year = now.getUTCFullYear();
+
+            const monthlyBoards = await MonthlyBoard.find({ userId, year });
+
+            const boardByMonth = {};
+            monthlyBoards.forEach((mb) => {
+                boardByMonth[mb.month] = mb;
+            });
+
+            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+            const monthsData = Array.from({ length: 12 }, (_, i) => {
+                const month = i + 1;
+                const mb = boardByMonth[month];
+                return {
+                    month,
+                    monthName: monthNames[i],
+                    cigarettesAvoided: mb ? mb.totalCigarettesAvoided : 0,
+                    cigarettesSmoked: mb ? mb.totalCigarettesSmoked : 0,
+                    totalCigarettes: mb ? mb.totalCigarettesAvoided + mb.totalCigarettesSmoked : 0,
+                };
+            });
+
+            const yearTotal = monthsData.reduce(
+                (acc, m) => {
+                    acc.cigarettesAvoided += m.cigarettesAvoided;
+                    acc.cigarettesSmoked += m.cigarettesSmoked;
+                    acc.totalCigarettes += m.totalCigarettes;
+                    return acc;
+                },
+                { cigarettesAvoided: 0, cigarettesSmoked: 0, totalCigarettes: 0 }
+            );
+
+            return res.status(200).json({
+                success: true,
+                type: "year",
+                year,
+                months: monthsData,
+                total: yearTotal,
+            });
+        }
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ═══════════════════════════════════════════
 // LEGACY BOARD APIs (for competition boards)
 // ═══════════════════════════════════════════
 // exports.createBoard = async (req, res) => {
