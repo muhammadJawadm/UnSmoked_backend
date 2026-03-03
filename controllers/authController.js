@@ -389,9 +389,21 @@ exports.getUserProfile = async (req, res) => {
                 xpForNextLevel,
                 xpProgress,
                 overview: {
-                    cigarettesAvoided: overview.cigarettesAvoided,
-                    lifeRegained: overview.lifeRegained,
-                    moneySaved: overview.moneySaved,
+                    daily: {
+                        cigarettesAvoided: overview.dailyCigarettesAvoided,
+                        lifeRegained: overview.dailyLifeRegained,
+                        moneySaved: overview.dailyMoneySaved,
+                    },
+                    monthly: {
+                        cigarettesAvoided: overview.monthlyCigarettesAvoided,
+                        lifeRegained: overview.monthlyLifeRegained,
+                        moneySaved: overview.monthlyMoneySaved,
+                    },
+                    lifetime: {
+                        cigarettesAvoided: overview.totalCigarettesAvoided,
+                        lifeRegained: overview.totalLifeRegained,
+                        moneySaved: overview.totalMoneySaved,
+                    },
                     lungsHealth: overview.lungsHealth,
                     overallHealth: overview.overallHealth,
                 },
@@ -438,9 +450,21 @@ exports.getUserById = async (req, res) => {
                 xpForNextLevel,
                 xpProgress,
                 overview: {
-                    cigarettesAvoided: overview.cigarettesAvoided,
-                    lifeRegained: overview.lifeRegained,
-                    moneySaved: overview.moneySaved,
+                    daily: {
+                        cigarettesAvoided: overview.dailyCigarettesAvoided,
+                        lifeRegained: overview.dailyLifeRegained,
+                        moneySaved: overview.dailyMoneySaved,
+                    },
+                    monthly: {
+                        cigarettesAvoided: overview.monthlyCigarettesAvoided,
+                        lifeRegained: overview.monthlyLifeRegained,
+                        moneySaved: overview.monthlyMoneySaved,
+                    },
+                    lifetime: {
+                        cigarettesAvoided: overview.totalCigarettesAvoided,
+                        lifeRegained: overview.totalLifeRegained,
+                        moneySaved: overview.totalMoneySaved,
+                    },
                     lungsHealth: overview.lungsHealth,
                     overallHealth: overview.overallHealth,
                 },

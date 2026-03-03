@@ -1,9 +1,24 @@
 const express = require("express");
 const router = express.Router();
-const { /*createBoard,*/ getBoard, markTodayStatus } = require("../controllers/boardController");
+const {
+    getTodayBoard,
+    markSlot,
+    getMonthlyBoard,
+    getTodayImpact,
+    getUserOverviewStats,
+    getBoard,
+    markTodayStatus,
+} = require("../controllers/boardController");
 const verifyToken = require("../middleware/verifyToken");
 
-// router.post("/create", verifyToken, createBoard); // disabled — boards created via competition only
+// New board system routes
+router.get("/today", verifyToken, getTodayBoard);
+router.post("/mark-slot", verifyToken, markSlot);
+router.get("/monthly", verifyToken, getMonthlyBoard);
+router.get("/today-impact", verifyToken, getTodayImpact);
+router.get("/overview", verifyToken, getUserOverviewStats);
+
+// Legacy routes (for competition boards)
 router.get("/", verifyToken, getBoard);
 router.post("/mark-today", verifyToken, markTodayStatus);
 
