@@ -378,7 +378,9 @@ exports.updateUser = async (req, res) => {
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
         }
-
+        if (req.body.role === "admin") {
+            return res.status(403).json({ success: false, message: "You are not authorized to perform this action" });
+        }
         // Only update provided fields
         if (req.body.name) user.name = req.body.name;
         if (req.body.email) user.email = req.body.email;

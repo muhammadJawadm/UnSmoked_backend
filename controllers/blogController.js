@@ -12,8 +12,8 @@ exports.createBlog = async (req, res) => {
             return res.status(403).json({ success: false, message: "Only admins can create blogs" });
         }
 
-        const { title, description, image = [] } = req.body;
-        const blog = await Blog.create({ title, description, image, userId });
+        const { title, description, image = [], readingTime, source } = req.body;
+        const blog = await Blog.create({ title, description, image, readingTime, source, userId });
         res.status(201).json({ success: true, message: "Blog created successfully", blog });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -28,7 +28,7 @@ exports.getAllBlogs = async (req, res) => {
 
         const [results, totalItems] = await Promise.all([
             Blog.find()
-                .populate("userId", "name profile_picture")
+                .select("-userId")
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(pageSize),
@@ -64,7 +64,7 @@ exports.getBlogById = async (req, res) => {
 
 exports.updateBlog = async (req, res) => {
     try {
-        const { title, description, image } = req.body;
+        const { title, description, image, readingTime, source } = req.body;
         const userId = req.user.id;
 
         // Check if the user is an admin
@@ -80,7 +80,7 @@ exports.updateBlog = async (req, res) => {
         }
 
         // Now perform the update
-        const updatedBlog = await Blog.findByIdAndUpdate(req.params.id, { title, description, image }, { new: true });
+        const updatedBlog = await Blog.findByIdAndUpdate(req.params.id, { title, description, image, readingTime, source }, { new: true });
         res.status(200).json({ success: true, message: "Blog updated successfully", blog: updatedBlog });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
