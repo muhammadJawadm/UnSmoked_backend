@@ -4,6 +4,8 @@ const MonthlyBoard = require("../models/MonthlyBoard");
 const UserOverview = require("../models/UserOverview");
 const User = require("../models/User");
 const Competition = require("../models/Competition");
+const UserProgress = require("../models/UserProgress");
+const Badges = require("../models/Badges");
 
 // ─── Constants ───
 const LIFE_REGAINED_PER_CIGARETTE = 11; // minutes of life regained per cigarette avoided
@@ -235,10 +237,19 @@ exports.markSlot = async (req, res) => {
             await updateOverview(userId, dailyBoard, monthlyBoard);
         }
 
+        const allMonthlyBoards = await MonthlyBoard.find({ userId });
+        const lifetimeStats = {
+            totalCigarettesAvoided: allMonthlyBoards.reduce((sum, mb) => sum + mb.totalCigarettesAvoided, 0),
+            totalCigarettesSmoked: allMonthlyBoards.reduce((sum, mb) => sum + mb.totalCigarettesSmoked, 0),
+            totalLifeRegained: allMonthlyBoards.reduce((sum, mb) => sum + mb.totalLifeRegained, 0),
+            totalMoneySaved: parseFloat(allMonthlyBoards.reduce((sum, mb) => sum + mb.totalMoneySaved, 0).toFixed(2)),
+        };
+
         res.status(200).json({
             success: true,
             message: "Slot updated successfully",
             dailyBoard,
+            lifetimeStats,
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -512,6 +523,83 @@ exports.getStats = async (req, res) => {
             });
         }
 
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ═══════════════════════════════════════════
+// LEADERBOARD API
+// GET /boards/leaderboard
+// ═══════════════════════════════════════════
+
+exports.getLeaderboard = async (req, res) => {
+    try {
+        // Fetch all active users
+        const users = await User.find({ is_active: true, role: "user" }).select("_id name profile_picture").lean();
+
+        const userIds = users.map((u) => u._id);
+
+        // Fetch overviews, progress, and latest badge for all users in parallel
+        const [overviews, progresses, badges] = await Promise.all([
+            UserOverview.find({ userId: { $in: userIds } }).lean(),
+            UserProgress.find({ userId: { $in: userIds } }).lean(),
+            Badges.find({ userId: { $in: userIds } })
+                .sort({ earnedAt: -1 })
+                .populate("badge", "title imageUrl type")
+                .lean(),
+        ]);
+
+        // Index by userId string for O(1) lookup
+        const overviewMap = {};
+        overviews.forEach((o) => { overviewMap[o.userId.toString()] = o; });
+
+        const progressMap = {};
+        progresses.forEach((p) => { progressMap[p.userId.toString()] = p; });
+
+        // Keep only the most recently earned badge per user
+        const badgeMap = {};
+        badges.forEach((b) => {
+            const key = b.userId.toString();
+            if (!badgeMap[key]) badgeMap[key] = b; // already sorted by earnedAt desc
+        });
+
+        // Build leaderboard entries
+        const leaderboard = users.map((user) => {
+            const key = user._id.toString();
+            const overview = overviewMap[key];
+            const progress = progressMap[key];
+            const latestBadge = badgeMap[key];
+
+            return {
+                userId: user._id,
+                name: user.name,
+                profilePicture: user.profile_picture || null,
+                cigarettesAvoided: overview ? overview.totalCigarettesAvoided : 0,
+                lifeRegained: overview ? overview.totalLifeRegained : 0,   // in minutes
+                level: progress ? progress.level : 1,
+                badge: latestBadge
+                    ? {
+                        title: latestBadge.badge.title,
+                        imageUrl: latestBadge.badge.imageUrl,
+                        type: latestBadge.badge.type,
+                        earnedAt: latestBadge.earnedAt,
+                    }
+                    : null,
+            };
+        });
+
+        // Sort by cigarettes avoided descending
+        leaderboard.sort((a, b) => b.cigarettesAvoided - a.cigarettesAvoided);
+
+        // Attach rank
+        leaderboard.forEach((entry, i) => { entry.rank = i + 1; });
+
+        res.status(200).json({
+            success: true,
+            total: leaderboard.length,
+            leaderboard,
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

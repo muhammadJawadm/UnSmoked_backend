@@ -7,6 +7,7 @@ const {
     getTodayImpact,
     getUserOverviewStats,
     getStats,
+    getLeaderboard,
     getBoard,
     markTodayStatus,
 } = require("../controllers/boardController");
@@ -19,6 +20,7 @@ router.get("/monthly", verifyToken, getMonthlyBoard);
 router.get("/today-impact", verifyToken, getTodayImpact);
 router.get("/overview", verifyToken, getUserOverviewStats);
 router.get("/stats", verifyToken, getStats);
+router.get("/leaderboard", verifyToken, getLeaderboard);
 
 // Legacy routes (for competition boards)
 router.get("/", verifyToken, getBoard);
