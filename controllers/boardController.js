@@ -172,23 +172,19 @@ exports.getTodayBoard = async (req, res) => {
         const userId = req.user.id;
         const { dailyBoard, user } = await ensureTodayBoard(userId);
 
-        const today = getTodayDate();
-        const month = today.getMonth() + 1;
-        const year = today.getFullYear();
+        const allMonthlyBoards = await MonthlyBoard.find({ userId });
 
-        const monthlyBoard = await MonthlyBoard.findOne({ userId, month, year });
+        const lifetimeStats = {
+            totalCigarettesAvoided: allMonthlyBoards.reduce((sum, mb) => sum + mb.totalCigarettesAvoided, 0),
+            totalCigarettesSmoked: allMonthlyBoards.reduce((sum, mb) => sum + mb.totalCigarettesSmoked, 0),
+            totalLifeRegained: allMonthlyBoards.reduce((sum, mb) => sum + mb.totalLifeRegained, 0),
+            totalMoneySaved: parseFloat(allMonthlyBoards.reduce((sum, mb) => sum + mb.totalMoneySaved, 0).toFixed(2)),
+        };
 
         res.status(200).json({
             success: true,
             dailyBoard,
-            monthlyStats: monthlyBoard
-                ? {
-                    totalCigarettesAvoided: monthlyBoard.totalCigarettesAvoided,
-                    totalCigarettesSmoked: monthlyBoard.totalCigarettesSmoked,
-                    totalLifeRegained: monthlyBoard.totalLifeRegained,
-                    totalMoneySaved: monthlyBoard.totalMoneySaved,
-                }
-                : null,
+            lifetimeStats,
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
