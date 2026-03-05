@@ -26,8 +26,7 @@ const boardSchema = new mongoose.Schema({
     },
     boardSize: {
         type: Number,
-        required: true,
-        enum: [7, 14, 30, 60, 90]
+        required: true
     },
     days: {
         type: [daySchema],

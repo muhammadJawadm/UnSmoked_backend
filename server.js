@@ -79,4 +79,56 @@ app.listen(port, () => {
             console.error("Auto-expire error:", error);
         }
     }, 5 * 60 * 1000); // 5 minutes
+
+    // Auto-activate / auto-complete competitions cron job (runs every 5 minutes)
+    const Competition = require("./models/Competition");
+    const sendNotificationToUsers = require("./utils/sendNotification");
+    setInterval(async () => {
+        try {
+            const now = new Date();
+
+            // 1) Auto-activate: pending competitions that are full AND startDate has arrived
+            const toActivate = await Competition.find({
+                status: "pending",
+                startDate: { $lte: now },
+                $expr: { $eq: [{ $size: "$players" }, "$numberOfPlayers"] },
+            });
+
+            for (const comp of toActivate) {
+                comp.status = "active";
+                await comp.save();
+
+                const playerIds = comp.players.map((p) => p.user.toString());
+                await sendNotificationToUsers(
+                    playerIds,
+                    "Competition Started! 🏆",
+                    "Your competition is now active. Good luck!",
+                    { type: "competition_active", competitionId: comp._id.toString() }
+                );
+                console.log(`Auto-activated competition ${comp._id}`);
+            }
+
+            // 2) Auto-complete: active competitions whose endDate has passed
+            const toComplete = await Competition.find({
+                status: "active",
+                endDate: { $lte: now },
+            });
+
+            for (const comp of toComplete) {
+                comp.status = "completed";
+                await comp.save();
+
+                const playerIds = comp.players.map((p) => p.user.toString());
+                await sendNotificationToUsers(
+                    playerIds,
+                    "Competition Completed! 🎉",
+                    "Your competition has ended. Check your results!",
+                    { type: "competition_completed", competitionId: comp._id.toString() }
+                );
+                console.log(`Auto-completed competition ${comp._id}`);
+            }
+        } catch (error) {
+            console.error("Competition cron error:", error);
+        }
+    }, 5 * 60 * 1000); // 5 minutes
 });
