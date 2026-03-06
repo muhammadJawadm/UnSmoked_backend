@@ -535,6 +535,9 @@ exports.getStats = async (req, res) => {
 
 exports.getLeaderboard = async (req, res) => {
     try {
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
+
         // Fetch all active users
         const users = await User.find({ is_active: true, role: "user" }).select("_id name profile_picture").lean();
 
@@ -592,13 +595,25 @@ exports.getLeaderboard = async (req, res) => {
         // Sort by cigarettes avoided descending
         leaderboard.sort((a, b) => b.cigarettesAvoided - a.cigarettesAvoided);
 
-        // Attach rank
+        // Attach rank (based on full sorted list)
         leaderboard.forEach((entry, i) => { entry.rank = i + 1; });
+
+        // Paginate
+        const totalItems = leaderboard.length;
+        const totalPages = Math.ceil(totalItems / limit);
+        const skip = (page - 1) * limit;
+        const results = leaderboard.slice(skip, skip + limit);
 
         res.status(200).json({
             success: true,
-            total: leaderboard.length,
-            leaderboard,
+            pagination: {
+                currentPage: page,
+                totalPages,
+                totalItems,
+                pageSize: limit,
+                itemsCount: results.length,
+                results,
+            },
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
