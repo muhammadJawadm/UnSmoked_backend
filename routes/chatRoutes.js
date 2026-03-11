@@ -1,12 +1,15 @@
 const express = require("express");
 const router = express.Router();
 const verifyToken = require("../middleware/verifyToken");
-const { createChat, getAllChats, getUserChats, getChatById, deleteChat } = require("../controllers/chatController");
+const { getAllChats, getMyChat, clearMyChat } = require("../controllers/chatController");
 
-router.post("/", verifyToken, createChat);
+// Admin: list all users' chats
 router.get("/", verifyToken, getAllChats);
-router.get("/my-chats", verifyToken, getUserChats);
-router.get("/:id", verifyToken, getChatById);
-router.delete("/:id", verifyToken, deleteChat);
+
+// User: get (or auto-create) their single persistent chat + full message history
+router.get("/my-chat", verifyToken, getMyChat);
+
+// User: wipe their entire message history (chat record is kept)
+router.delete("/my-chat/clear", verifyToken, clearMyChat);
 
 module.exports = router;

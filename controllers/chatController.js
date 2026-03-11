@@ -1,17 +1,6 @@
 const Chat = require("../models/Chat");
 const Message = require("../models/Message");
 
-// Create new chat
-exports.createChat = async (req, res) => {
-    try {
-        const chat = new Chat({ user: req.user.id });
-        await chat.save();
-        res.status(201).json({ success: true, message: "Chat created successfully", chat });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
 // Get all chats (admin only)
 exports.getAllChats = async (req, res) => {
     try {
@@ -25,26 +14,16 @@ exports.getAllChats = async (req, res) => {
     }
 };
 
-// Get user's chats
-exports.getUserChats = async (req, res) => {
+// Get (or auto-create) the user's single persistent chat with all messages
+exports.getMyChat = async (req, res) => {
     try {
-        const chats = await Chat.find({ user: req.user.id }).sort({ updatedAt: -1 });
-        res.status(200).json({ success: true, chats });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// Get chat by ID with messages
-exports.getChatById = async (req, res) => {
-    try {
-        const chat = await Chat.findById(req.params.id).populate("user", "name email");
+        let chat = await Chat.findOne({ user: req.user.id });
         if (!chat) {
-            return res.status(404).json({ success: false, message: "Chat not found" });
+            chat = new Chat({ user: req.user.id, title: "My Chat" });
+            await chat.save();
         }
 
-        // Get all messages for this chat
-        const messages = await Message.find({ chat: req.params.id }).sort({ createdAt: 1 });
+        const messages = await Message.find({ chat: chat._id }).sort({ createdAt: 1 });
 
         res.status(200).json({ success: true, chat, messages });
     } catch (error) {
@@ -52,21 +31,21 @@ exports.getChatById = async (req, res) => {
     }
 };
 
-// Delete chat and all its messages
-exports.deleteChat = async (req, res) => {
+// Clear the user's entire chat history (keeps the chat record, wipes messages)
+exports.clearMyChat = async (req, res) => {
     try {
-        const chat = await Chat.findById(req.params.id);
+        const chat = await Chat.findOne({ user: req.user.id });
         if (!chat) {
             return res.status(404).json({ success: false, message: "Chat not found" });
         }
 
-        // Delete all messages in this chat
-        await Message.deleteMany({ chat: req.params.id });
+        await Message.deleteMany({ chat: chat._id });
 
-        // Delete the chat
-        await Chat.findByIdAndDelete(req.params.id);
+        chat.title = "My Chat";
+        chat.message = "";
+        await chat.save();
 
-        res.status(200).json({ success: true, message: "Chat and all messages deleted successfully" });
+        res.status(200).json({ success: true, message: "Chat history cleared successfully" });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

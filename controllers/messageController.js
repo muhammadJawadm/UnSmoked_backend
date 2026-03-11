@@ -2,36 +2,6 @@ const Message = require("../models/Message");
 const Chat = require("../models/Chat");
 const { OpenAI } = require("openai");
 
-// Create a new message
-exports.createMessage = async (req, res) => {
-    try {
-        const { chat, role, message, media } = req.body;
-
-        // Verify chat exists
-        const chatExists = await Chat.findById(chat);
-        if (!chatExists) {
-            return res.status(404).json({ success: false, message: "Chat not found" });
-        }
-
-        const newMessage = new Message({
-            chat,
-            role,
-            message,
-            media: media || []
-        });
-
-        await newMessage.save();
-
-        // Update chat's updatedAt timestamp
-        chatExists.updatedAt = new Date();
-        await chatExists.save();
-
-        res.status(201).json({ success: true, message: "Message created successfully", data: newMessage });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
 // Get all messages for a specific chat
 exports.getMessagesByChatId = async (req, res) => {
     try {
@@ -55,79 +25,83 @@ exports.deleteMessage = async (req, res) => {
     }
 };
 
-// Optional: Send message to OpenAI and store response
-// This is a placeholder - you'll need to install 'openai' package and add your API key
+// Send a message to OpenAI and store both the user message and AI response.
+// Automatically finds (or creates) the user's single persistent chat.
 exports.sendToOpenAI = async (req, res) => {
     try {
-        const { chatId, userMessage } = req.body;
+        const { userMessage } = req.body;
 
-        // Verify chat exists
-        const chat = await Chat.findById(chatId);
-        if (!chat) {
-            return res.status(404).json({ success: false, message: "Chat not found" });
+        if (!userMessage || !userMessage.trim()) {
+            return res.status(400).json({ success: false, message: "userMessage is required" });
         }
 
-        // Store user's message
+        // Find or create the user's single persistent chat
+        let chat = await Chat.findOne({ user: req.user.id });
+        if (!chat) {
+            chat = new Chat({ user: req.user.id, title: "My Chat" });
+            await chat.save();
+        }
+
+        // Store the user's message first
         const userMsg = new Message({
-            chat: chatId,
+            chat: chat._id,
             role: "user",
-            message: userMessage
+            message: userMessage.trim()
         });
         await userMsg.save();
 
-        // Get entire conversation history for context
-        const conversationHistory = await Message.find({ chat: chatId })
+        // Load the full conversation history (including the message just saved)
+        const conversationHistory = await Message.find({ chat: chat._id })
             .sort({ createdAt: 1 })
-            .select('role message');
+            .select("role message");
 
-        // TODO: Integrate with OpenAI API
-        // Example (requires 'openai' package):
-
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        const completion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: conversationHistory.map(msg => ({
+        // Build the messages array for OpenAI with a fixed system prompt
+        const openaiMessages = [
+            {
+                role: "system",
+                content: "You are a supportive AI assistant for Unsmoked, a smoking cessation app. Help users quit smoking by providing encouragement, evidence-based advice, coping strategies, and emotional support. Be empathetic, positive, and motivating."
+            },
+            ...conversationHistory.map(msg => ({
                 role: msg.role,
                 content: msg.message
-            })),
-            temperature: 0.7,
-            max_tokens: 500
-        });
-        const aiResponse = completion.choices[0].message.content;
+            }))
+        ];
 
-        // Placeholder response
-        // aiResponse = `This is a placeholder response. Integrate OpenAI API to get real responses. (Context: ${conversationHistory.length} messages in history)`;
-
-        // Store AI's response
+        let aiResponse;
+        try {
+            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+            const completion = await openai.chat.completions.create({
+                model: "gpt-3.5-turbo",
+                messages: openaiMessages,
+                temperature: 0.7,
+                max_tokens: 500
+            });
+            aiResponse = completion.choices[0].message.content;
+        } catch (openaiError) {
+            // Fallback dummy response so the full message flow can be tested
+            // even when the OpenAI key has no quota or is not set
+            aiResponse = `[DUMMY RESPONSE] I received your message: "${userMessage.trim()}". This is a placeholder reply used for testing — the AI service is currently unavailable (${openaiError.message}).`;
+        }
+        
+        // Store the AI's response
         const aiMsg = new Message({
-            chat: chatId,
+            chat: chat._id,
             role: "assistant",
             message: aiResponse
         });
         await aiMsg.save();
 
-        // Auto-generate title from first user message (if still "New Chat")
-        if (chat.title === "New Chat" && userMessage) {
-            const title = userMessage.length > 50
-                ? userMessage.substring(0, 50) + "..."
-                : userMessage;
-            chat.title = title;
-        }
-
-        // Update preview with latest user message
-        const preview = userMessage.length > 60
-            ? userMessage.substring(0, 60) + "..."
-            : userMessage;
-        chat.message = preview;
+        // Update the chat preview with the latest user message
+        chat.message = userMessage.trim().length > 60
+            ? userMessage.trim().substring(0, 60) + "..."
+            : userMessage.trim();
         chat.updatedAt = new Date();
         await chat.save();
 
         res.status(200).json({
             success: true,
             userMessage: userMsg,
-            aiMessage: aiMsg,
-            chatTitle: chat.title,
-            chatPreview: chat.message
+            aiMessage: aiMsg
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
