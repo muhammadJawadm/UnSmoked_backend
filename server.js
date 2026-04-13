@@ -64,19 +64,56 @@ app.get("/", (req, res) => {
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
 
-    // Auto-expire challenges cron job (runs every 5 minutes)
-    const Challenges = require("./models/Challenges");
+    // Auto-complete challenges cron job (runs every 5 minutes)
+    const Challenge = require("./models/Challenges");
+    const ChallengeParticipant = require("./models/ChallengeParticipant");
+    const { addXP } = require("./utils/xpSystem");
+    const { checkAndAssignBadge } = require("./services/badgeService");
+
     setInterval(async () => {
         try {
-            const result = await Challenges.updateMany(
-                { status: "pending", dueAt: { $lte: new Date() } },
-                { status: "expired" }
-            );
-            if (result.modifiedCount > 0) {
-                console.log(`Auto-expired ${result.modifiedCount} challenges`);
+            const now = new Date();
+            const toComplete = await Challenge.find({ status: "active", endsAt: { $lte: now } });
+
+            for (const challenge of toComplete) {
+                // Determine winner
+                const participants = await ChallengeParticipant.find({
+                    challengeId: challenge._id,
+                    inviteStatus: "accepted",
+                }).sort({ progressValue: -1 });
+
+                challenge.winner = participants[0]?.userId || null;
+                challenge.status = "completed";
+                await challenge.save();
+
+                // Award XP and badges
+                for (const p of participants) {
+                    if (p.xpEarned > 0) continue; // skip already awarded
+                    
+                    const isWinner = challenge.winner?.toString() === p.userId.toString();
+                    const xp = isWinner ? challenge.xpReward : Math.floor(challenge.xpReward / 2);
+                    
+                    p.xpEarned = xp;
+                    await p.save();
+                    
+                    const updatedProgress = await addXP(p.userId.toString(), xp);
+                    await checkAndAssignBadge(p.userId.toString(), "completion", updatedProgress.challengesCompleted);
+                    await checkAndAssignBadge(p.userId.toString(), "milestone", updatedProgress.level);
+                }
+                
+                // Notify users
+                const playerIds = participants.map((p) => p.userId.toString());
+                const sendNotificationToUsers = require("./utils/sendNotification");
+                await sendNotificationToUsers(
+                    playerIds,
+                    "Challenge Ended! 🏆",
+                    `${challenge.title} has completed. Check your results!`,
+                    { type: "challenge_completed", challengeId: challenge._id.toString() }
+                );
+                console.log(`Auto-completed challenge ${challenge._id}`);
             }
         } catch (error) {
-            console.error("Auto-expire error:", error);
+            console.error("Challenge auto-complete error:", error);
         }
     }, 5 * 60 * 1000); // 5 minutes
 

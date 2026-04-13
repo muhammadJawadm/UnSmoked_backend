@@ -1,0 +1,484 @@
+{
+  "info": {
+    "_postman_id": "c1f10e40-ed1c-4b95-a2f0-57155d4948eb",
+    "name": "Unsmoked Challenges Module",
+    "description": "API endpoints for the new Challenges flow (Creator, Invites, Lobby, Leaderboard)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Create Challenge (Custom)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"mode\": \"4-player\",\n    \"sourceType\": \"custom\",\n    \"title\": \"Walk 10,000 steps today\",\n    \"category\": \"Fitness\",\n    \"durationDays\": 1,\n    \"boardSize\": 50,\n    \"xpReward\": 100,\n    \"description\": \"First one to hit the goal wins.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/create",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "create"
+          ]
+        }
+      }
+    },
+    {
+      "name": "1b. Create Challenge (Preset/Template)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"mode\": \"1v1\",\n    \"sourceType\": \"preset\",\n    \"templateId\": \"<INSERT_TEMPLATE_ID>\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/create",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "create"
+          ]
+        }
+      }
+    },
+    {
+      "name": "1c. Create Challenge (Open link)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"mode\": \"open\",\n    \"sourceType\": \"custom\",\n    \"title\": \"Global Smoke Free Day\",\n    \"durationDays\": 7\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/create",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "create"
+          ]
+        }
+      }
+    },
+    {
+      "name": "2. Invite Players",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"userIds\": [\"<USER_ID_1>\", \"<USER_ID_2>\"]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/{{challenge_id}}/invite",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "{{challenge_id}}",
+            "invite"
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. Get My Invites (Inbox)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/invites?status=pending",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "invites"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "pending"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. Get Challenge Detail (Pre-accept)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/{{challenge_id}}/detail",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "{{challenge_id}}",
+            "detail"
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Respond To Invite",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"action\": \"accept\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/{{challenge_id}}/respond",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "{{challenge_id}}",
+            "respond"
+          ]
+        }
+      }
+    },
+    {
+      "name": "6. Waiting Room (Player view)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/{{challenge_id}}/waiting-room",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "{{challenge_id}}",
+            "waiting-room"
+          ]
+        }
+      }
+    },
+    {
+      "name": "7. Creator Monitor (Admin view)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/{{challenge_id}}/monitor",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "{{challenge_id}}",
+            "monitor"
+          ]
+        }
+      }
+    },
+    {
+      "name": "8. Remind Invitee",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"userId\": \"<PENDING_USER_ID>\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/{{challenge_id}}/remind",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "{{challenge_id}}",
+            "remind"
+          ]
+        }
+      }
+    },
+    {
+      "name": "9. Force Start Challenge",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/{{challenge_id}}/start",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "{{challenge_id}}",
+            "start"
+          ]
+        }
+      }
+    },
+    {
+      "name": "10. Cancel Challenge",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/{{challenge_id}}/cancel",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "{{challenge_id}}",
+            "cancel"
+          ]
+        }
+      }
+    },
+    {
+      "name": "11. My Challenges Hub",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/my",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "my"
+          ]
+        }
+      }
+    },
+    {
+      "name": "12. Log Progress",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"value\": 10\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/{{challenge_id}}/log-progress",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "{{challenge_id}}",
+            "log-progress"
+          ]
+        }
+      }
+    },
+    {
+      "name": "13. Live Leaderboard",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/{{challenge_id}}/leaderboard",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "{{challenge_id}}",
+            "leaderboard"
+          ]
+        }
+      }
+    },
+    {
+      "name": "14. Finalize / Complete / Results",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/{{challenge_id}}/complete",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "{{challenge_id}}",
+            "complete"
+          ]
+        }
+      }
+    },
+    {
+      "name": "15. Discover Challenge Templates",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/challenge-assignments/discover?category=All",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "challenge-assignments",
+            "discover"
+          ],
+          "query": [
+            {
+              "key": "category",
+              "value": "All"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "token",
+      "value": "<YOUR_AUTH_TOKEN>"
+    },
+    {
+      "key": "challenge_id",
+      "value": "<CHALLENGE_ID>"
+    }
+  ]
+}

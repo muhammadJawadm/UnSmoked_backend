@@ -4,8 +4,10 @@ const TemplateSchema = new mongoose.Schema(
     {
         title: { type: String, required: true, trim: true },
         description: { type: String, default: "" },
+        rules: { type: String, default: "" },          // NEW: challenge rules / how to play
         category: { type: String, default: "General" },
         durationDays: { type: Number, default: 1, min: 1 },
+        boardSize: { type: Number, default: 50 },       // NEW: metadata (e.g. number of squares)
         xpReward: { type: Number, default: 50, min: 0 },
         isActive: { type: Boolean, default: true },
         isCustom: { type: Boolean, default: false },
