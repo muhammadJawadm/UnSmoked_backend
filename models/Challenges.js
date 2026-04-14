@@ -56,7 +56,6 @@ const challengeSchema = new mongoose.Schema(
         // Invite token — used for open challenges and share-link flow
         inviteToken: {
             type: String,
-            default: null,
             unique: true,
             sparse: true,
         },
