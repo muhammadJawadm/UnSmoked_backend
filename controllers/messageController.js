@@ -29,10 +29,30 @@ exports.deleteMessage = async (req, res) => {
 // Automatically finds (or creates) the user's single persistent chat.
 exports.sendToOpenAI = async (req, res) => {
     try {
-        const { userMessage } = req.body;
+        const { userMessage, media, mediaUrls } = req.body;
+        const trimmedUserMessage = typeof userMessage === "string" ? userMessage.trim() : "";
 
-        if (!userMessage || !userMessage.trim()) {
-            return res.status(400).json({ success: false, message: "userMessage is required" });
+        // Accept media as a single URL string or an array of URL strings.
+        const rawMediaInput = media !== undefined ? media : mediaUrls;
+        let normalizedMedia = [];
+
+        if (Array.isArray(rawMediaInput)) {
+            normalizedMedia = rawMediaInput
+                .filter(item => typeof item === "string")
+                .map(item => item.trim())
+                .filter(Boolean);
+        } else if (typeof rawMediaInput === "string") {
+            const trimmedMedia = rawMediaInput.trim();
+            if (trimmedMedia) {
+                normalizedMedia = [trimmedMedia];
+            }
+        }
+
+        const hasText = Boolean(trimmedUserMessage);
+        const hasMedia = normalizedMedia.length > 0;
+
+        if (!hasText && !hasMedia) {
+            return res.status(400).json({ success: false, message: "Send either userMessage or media URL(s)" });
         }
 
         // Find or create the user's single persistent chat
@@ -46,14 +66,15 @@ exports.sendToOpenAI = async (req, res) => {
         const userMsg = new Message({
             chat: chat._id,
             role: "user",
-            message: userMessage.trim()
+            message: hasText ? trimmedUserMessage : "[Media attachment]",
+            media: normalizedMedia
         });
         await userMsg.save();
 
         // Load the full conversation history (including the message just saved)
         const conversationHistory = await Message.find({ chat: chat._id })
             .sort({ createdAt: 1 })
-            .select("role message");
+            .select("role message media");
 
         // Build the messages array for OpenAI with a fixed system prompt
         const openaiMessages = [
@@ -63,7 +84,9 @@ exports.sendToOpenAI = async (req, res) => {
             },
             ...conversationHistory.map(msg => ({
                 role: msg.role,
-                content: msg.message
+                content: Array.isArray(msg.media) && msg.media.length > 0
+                    ? `${msg.message || ""}\n\nAttached media URLs:\n${msg.media.map(url => `- ${url}`).join("\n")}`.trim()
+                    : msg.message
             }))
         ];
 
@@ -80,7 +103,7 @@ exports.sendToOpenAI = async (req, res) => {
         } catch (openaiError) {
             // Fallback dummy response so the full message flow can be tested
             // even when the OpenAI key has no quota or is not set
-            aiResponse = `[DUMMY RESPONSE] I received your message: "${userMessage.trim()}". This is a placeholder reply used for testing — the AI service is currently unavailable (${openaiError.message}).`;
+            aiResponse = `[DUMMY RESPONSE] I received your message: "${hasText ? trimmedUserMessage : "[Media attachment]"}". This is a placeholder reply used for testing - the AI service is currently unavailable (${openaiError.message}).`;
         }
         
         // Store the AI's response
@@ -92,9 +115,10 @@ exports.sendToOpenAI = async (req, res) => {
         await aiMsg.save();
 
         // Update the chat preview with the latest user message
-        chat.message = userMessage.trim().length > 60
-            ? userMessage.trim().substring(0, 60) + "..."
-            : userMessage.trim();
+        const latestPreviewText = hasText ? trimmedUserMessage : "[Media attachment]";
+        chat.message = latestPreviewText.length > 60
+            ? latestPreviewText.substring(0, 60) + "..."
+            : latestPreviewText;
         chat.updatedAt = new Date();
         await chat.save();
 
