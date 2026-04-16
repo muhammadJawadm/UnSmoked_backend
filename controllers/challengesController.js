@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const Challenge = require("../models/Challenges");
 const ChallengeParticipant = require("../models/ChallengeParticipant");
 const Template = require("../models/Template");
+const Category = require("../models/Category");
 const User = require("../models/User");
 const { addXP } = require("../utils/xpSystem");
 const { checkAndAssignBadge } = require("../services/badgeService");
@@ -12,6 +13,24 @@ const sendNotificationToUsers = require("../utils/sendNotification");
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const generateInviteToken = () => crypto.randomBytes(20).toString("hex");
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const ensureValidCategory = async (categoryId) => {
+    if (!categoryId) {
+        return { valid: false, message: "category is required" };
+    }
+    if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+        return { valid: false, message: "Invalid category ID format" };
+    }
+
+    const exists = await Category.exists({ _id: categoryId });
+    if (!exists) {
+        return { valid: false, message: "Invalid category. Category not found" };
+    }
+
+    return { valid: true };
+};
 
 /**
  * Check whether a challenge should auto-activate based on accepted participant count.
@@ -135,6 +154,16 @@ exports.createChallenge = async (req, res) => {
                 description: template.description || "",
                 rules: template.rules || "",
             };
+
+            if (template.category) {
+                const templateCategoryExists = await Category.exists({ _id: template.category });
+                if (!templateCategoryExists) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Template category is invalid or has been deleted",
+                    });
+                }
+            }
         }
 
         // ── Custom: use fields from request body ───────────────────────────
@@ -152,10 +181,18 @@ exports.createChallenge = async (req, res) => {
                 });
             }
 
+            const categoryValidation = await ensureValidCategory(category);
+            if (!categoryValidation.valid) {
+                return res.status(400).json({
+                    success: false,
+                    message: categoryValidation.message,
+                });
+            }
+
             challengeData = {
                 ...challengeData,
                 title: title.trim(),
-                category: category || "General",
+                category,
                 durationDays: Number(durationDays),
                 boardSize: boardSize ? Number(boardSize) : 50,
                 xpReward: xpReward ? Number(xpReward) : 50,
@@ -185,10 +222,9 @@ exports.createChallenge = async (req, res) => {
             respondedAt: new Date(),
         });
 
-        const populated = await Challenge.findById(challenge._id).populate(
-            "createdBy",
-            "name profile_picture"
-        );
+        const populated = await Challenge.findById(challenge._id)
+            .populate("createdBy", "name profile_picture")
+            .populate("category", "name");
 
         return res.status(201).json({
             success: true,
@@ -337,6 +373,7 @@ exports.getChallengeDetail = async (req, res) => {
 
         const challenge = await Challenge.findById(id)
             .populate("createdBy", "name profile_picture")
+            .populate("category", "name")
             .populate("winner", "name profile_picture");
 
         if (!challenge) {
@@ -464,10 +501,9 @@ exports.getWaitingRoom = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const challenge = await Challenge.findById(id).populate(
-            "createdBy",
-            "name profile_picture"
-        );
+        const challenge = await Challenge.findById(id)
+            .populate("createdBy", "name profile_picture")
+            .populate("category", "name");
         if (!challenge) {
             return res.status(404).json({ success: false, message: "Challenge not found" });
         }
@@ -507,7 +543,7 @@ exports.getCreatorMonitor = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const challenge = await Challenge.findById(id);
+        const challenge = await Challenge.findById(id).populate("category", "name");
         if (!challenge) {
             return res.status(404).json({ success: false, message: "Challenge not found" });
         }
@@ -732,6 +768,7 @@ exports.getMyChallenges = async (req, res) => {
             moderationStatus: "ok",
         })
             .populate("createdBy", "name profile_picture")
+            .populate("category", "name")
             .populate("winner", "name profile_picture")
             .sort({ startAt: -1 });
 
@@ -742,6 +779,7 @@ exports.getMyChallenges = async (req, res) => {
             moderationStatus: "ok",
         })
             .populate("createdBy", "name profile_picture")
+            .populate("category", "name")
             .sort({ createdAt: -1 });
 
         // Completed challenges I was in
@@ -751,6 +789,7 @@ exports.getMyChallenges = async (req, res) => {
             moderationStatus: "ok",
         })
             .populate("createdBy", "name profile_picture")
+            .populate("category", "name")
             .populate("winner", "name profile_picture")
             .sort({ updatedAt: -1 });
 
@@ -788,7 +827,7 @@ exports.logProgress = async (req, res) => {
             });
         }
 
-        const challenge = await Challenge.findById(id);
+        const challenge = await Challenge.findById(id).populate("category", "name");
         if (!challenge) {
             return res.status(404).json({ success: false, message: "Challenge not found" });
         }
@@ -899,10 +938,9 @@ exports.completeChallenge = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const challenge = await Challenge.findById(id).populate(
-            "createdBy",
-            "name profile_picture"
-        );
+        const challenge = await Challenge.findById(id)
+            .populate("createdBy", "name profile_picture")
+            .populate("category", "name");
         if (!challenge) {
             return res.status(404).json({ success: false, message: "Challenge not found" });
         }
@@ -953,6 +991,7 @@ exports.completeChallenge = async (req, res) => {
         // Return final results
         const populated = await Challenge.findById(id)
             .populate("createdBy", "name profile_picture")
+            .populate("category", "name")
             .populate("winner", "name profile_picture");
 
         const finalLeaderboard = await ChallengeParticipant.find({
@@ -987,22 +1026,45 @@ exports.completeChallenge = async (req, res) => {
 exports.discoverChallenges = async (req, res) => {
     try {
         const { category } = req.query;
+        const categoryQuery = typeof category === "string" ? category.trim() : "";
 
         const filter = { isActive: true, isCustom: false };
-        if (category && category.toLowerCase() !== "all") {
-            filter.category = category;
+        if (categoryQuery && categoryQuery.toLowerCase() !== "all") {
+            if (mongoose.Types.ObjectId.isValid(categoryQuery)) {
+                const categoryExists = await Category.exists({ _id: categoryQuery });
+                if (!categoryExists) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Invalid category. Category not found",
+                    });
+                }
+                filter.category = categoryQuery;
+            } else {
+                const categoryDoc = await Category.findOne({
+                    name: { $regex: `^${escapeRegex(categoryQuery)}$`, $options: "i" },
+                }).select("_id");
+
+                if (!categoryDoc) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Invalid category. Category not found",
+                    });
+                }
+
+                filter.category = categoryDoc._id;
+            }
         }
 
-        const templates = await Template.find(filter).sort({ createdAt: -1 });
-        const categories = await Template.distinct("category", {
-            isActive: true,
-            isCustom: false,
-        });
+        const templates = await Template.find(filter)
+            .populate("category", "name")
+            .sort({ createdAt: -1 });
+
+        const categories = await Category.find().select("name").sort({ name: 1 });
 
         res.status(200).json({
             success: true,
             templates,
-            categories: ["All", ...categories],
+            categories: ["All", ...categories.map((c) => c.name)],
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

@@ -1,4 +1,6 @@
 const Template = require("../models/Template");
+const Category = require("../models/Category");
+const mongoose = require("mongoose");
 
 // Get all challenge templates
 exports.getAllTemplates = async (req, res) => {
@@ -11,7 +13,9 @@ exports.getAllTemplates = async (req, res) => {
             filter.isActive = isActive === "true";
         }
 
-        const templates = await Template.find(filter).sort({ createdAt: -1 });
+        const templates = await Template.find(filter)
+            .populate("category", "name")
+            .sort({ createdAt: -1 });
         res.status(200).json({ success: true, templates });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -21,7 +25,7 @@ exports.getAllTemplates = async (req, res) => {
 // Create challenge template (admin only, or any user for custom templates)
 exports.createTemplate = async (req, res) => {
     try {
-        const { title, description, category, durationDays, xpReward, isActive, isCustom, } = req.body;
+        const { title, description, category, durationDays, xpReward, isActive, isCustom } = req.body;
         const createdBy = req.user.id;
 
         // Only enforce admin check if the template is NOT custom
@@ -40,6 +44,26 @@ exports.createTemplate = async (req, res) => {
             return res.status(400).json({ success: false, message: "XP reward cannot be negative" });
         }
 
+        if (!category) {
+            return res.status(400).json({
+                success: false,
+                message: "category is required and must exist in Category",
+            });
+        }
+        if (!mongoose.Types.ObjectId.isValid(category)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid category ID format",
+            });
+        }
+        const categoryExists = await Category.exists({ _id: category });
+        if (!categoryExists) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid category. Category not found",
+            });
+        }
+
         const template = await Template.create({
             title,
             description,
@@ -51,7 +75,13 @@ exports.createTemplate = async (req, res) => {
             createdBy
         });
 
-        res.status(201).json({ success: true, message: "Challenge template created successfully", template });
+        const populatedTemplate = await Template.findById(template._id).populate("category", "name");
+
+        res.status(201).json({
+            success: true,
+            message: "Challenge template created successfully",
+            template: populatedTemplate,
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -91,6 +121,28 @@ exports.updateTemplate = async (req, res) => {
             });
         }
 
+        if (category !== undefined) {
+            if (!category) {
+                return res.status(400).json({
+                    success: false,
+                    message: "category cannot be empty",
+                });
+            }
+            if (!mongoose.Types.ObjectId.isValid(category)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid category ID format",
+                });
+            }
+            const categoryExists = await Category.exists({ _id: category });
+            if (!categoryExists) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid category. Category not found",
+                });
+            }
+        }
+
         // 4️⃣ Update fields
         template.title = title ?? template.title;
         template.description = description ?? template.description;
@@ -101,10 +153,12 @@ exports.updateTemplate = async (req, res) => {
 
         await template.save();
 
+        const populatedTemplate = await Template.findById(template._id).populate("category", "name");
+
         return res.status(200).json({
             success: true,
             message: "Template updated successfully",
-            template
+            template: populatedTemplate
         });
 
     } catch (error) {

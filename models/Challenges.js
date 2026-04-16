@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const Category = require("./Category");
 
 const challengeSchema = new mongoose.Schema(
     {
@@ -23,7 +24,19 @@ const challengeSchema = new mongoose.Schema(
 
         // Challenge content — always stored inline for fast reads
         title: { type: String, required: true, trim: true },
-        category: { type: String, default: "General" },
+        category: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Category",
+            default: null,
+            validate: {
+                validator: async function (value) {
+                    if (!value) return true;
+                    const exists = await Category.exists({ _id: value });
+                    return !!exists;
+                },
+                message: "Invalid category. Category must exist.",
+            },
+        },
         durationDays: { type: Number, default: 1, min: 1 },
         boardSize: { type: Number, default: 50 },       // metadata only
         xpReward: { type: Number, default: 50, min: 0 }, // freely set by creator
