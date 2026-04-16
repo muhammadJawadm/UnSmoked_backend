@@ -29,9 +29,7 @@ exports.createTemplate = async (req, res) => {
         const createdBy = req.user.id;
 
         // Only enforce admin check if the template is NOT custom
-        if (!isCustom && req.user.role !== "admin") {
-            return res.status(403).json({ success: false, message: "Admin access required" });
-        }
+       
 
         // Validation
         if (!title || title.trim() === "") {
