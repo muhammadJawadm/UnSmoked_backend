@@ -5,12 +5,18 @@ const mongoose = require("mongoose");
 // Get all challenge templates
 exports.getAllTemplates = async (req, res) => {
     try {
-        const { isActive } = req.query;
+        const { isActive, category } = req.query;
 
         // Build filter
         const filter = {};
         if (isActive !== undefined) {
             filter.isActive = isActive === "true";
+        }
+        if (category !== undefined) {
+            if (!mongoose.Types.ObjectId.isValid(category)) {
+                return res.status(400).json({ success: false, message: "Invalid category ID format" });
+            }
+            filter.category = category;
         }
 
         const templates = await Template.find(filter)
@@ -112,12 +118,6 @@ exports.updateTemplate = async (req, res) => {
         }
 
         // 3️⃣ If template is NOT custom → only admin can update
-        if (!template.isCustom && userRole !== "admin") {
-            return res.status(403).json({
-                success: false,
-                message: "Admin access required"
-            });
-        }
 
         if (category !== undefined) {
             if (!category) {
@@ -172,10 +172,7 @@ exports.updateTemplate = async (req, res) => {
 exports.deleteTemplate = async (req, res) => {
     try {
         // Check if user is admin
-        if (req.user.role !== "admin") {
-            return res.status(403).json({ success: false, message: "Admin access required" });
-        }
-
+        
         const template = await Template.findByIdAndDelete(req.params.id);
 
         if (!template) {
