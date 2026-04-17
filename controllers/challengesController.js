@@ -354,20 +354,39 @@ exports.getMyInvites = async (req, res) => {
     try {
         const userId = req.user.id;
         const { status } = req.query;
+        const currentPage = parseInt(req.query.page) || 1;
+        const pageSize = parseInt(req.query.limit) || 10;
+        const skip = (currentPage - 1) * pageSize;
 
         const filter = { userId, role: "invitee" };
         if (status && ["pending", "accepted", "declined"].includes(status)) {
             filter.inviteStatus = status;
         }
 
+        const totalItems = await ChallengeParticipant.countDocuments(filter);
+
         const invites = await ChallengeParticipant.find(filter)
             .populate({
                 path: "challengeId",
                 populate: { path: "createdBy", select: "name profile_picture" },
             })
+            .skip(skip)
+            .limit(pageSize)
             .sort({ createdAt: -1 });
 
-        res.status(200).json({ success: true, invites });
+        const totalPages = Math.ceil(totalItems / pageSize);
+
+        res.status(200).json({
+            success: true,
+            pagination: {
+                currentPage,
+                totalPages,
+                totalItems,
+                pageSize,
+                itemsCount: invites.length,
+                results: invites,
+            },
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
