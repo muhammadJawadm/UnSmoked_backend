@@ -749,16 +749,14 @@ exports.cancelChallenge = async (req, res) => {
 };
 
 // ─── 11. My Challenges Hub — S1 (Ongoing / Created / Completed) ───────────
-// GET /challenges/my?ongoingPage=1&createdPage=1&completedPage=1&limit=10
+// GET /challenges/my?page=1&limit=10
 exports.getMyChallenges = async (req, res) => {
     try {
         const userId = req.user.id;
 
-        // Pagination params (each sub-list has its own page)
-        const limit        = parseInt(req.query.limit)        || 10;
-        const ongoingPage  = parseInt(req.query.ongoingPage)  || 1;
-        const createdPage  = parseInt(req.query.createdPage)  || 1;
-        const completedPage = parseInt(req.query.completedPage) || 1;
+        const currentPage = parseInt(req.query.page)  || 1;
+        const pageSize    = parseInt(req.query.limit)  || 10;
+        const skip        = (currentPage - 1) * pageSize;
 
         // Find all challenge IDs where I'm an accepted participant
         const myParticipations = await ChallengeParticipant.find({
@@ -767,49 +765,43 @@ exports.getMyChallenges = async (req, res) => {
         }).select("challengeId");
         const myChallengeIds = myParticipations.map((p) => p.challengeId);
 
-        // ── Ongoing ──────────────────────────────────────────────────────────
-        const ongoingFilter = {
-            _id: { $in: myChallengeIds },
-            status: "active",
-            moderationStatus: "ok",
-        };
-        const ongoingTotal  = await Challenge.countDocuments(ongoingFilter);
-        const ongoingItems  = await Challenge.find(ongoingFilter)
-            .populate("createdBy", "name profile_picture")
-            .populate("category", "name")
-            .populate("winner", "name profile_picture")
-            .sort({ startAt: -1 })
-            .skip((ongoingPage - 1) * limit)
-            .limit(limit);
+        // ── Fetch all three lists (full, unpaginated) for accurate totals ─────
+        const [ongoing, createdByMe, completed] = await Promise.all([
+            Challenge.find({
+                _id: { $in: myChallengeIds },
+                status: "active",
+                moderationStatus: "ok",
+            })
+                .populate("createdBy", "name profile_picture")
+                .populate("category", "name")
+                .populate("winner", "name profile_picture")
+                .sort({ startAt: -1 }),
 
-        // ── Created by me ─────────────────────────────────────────────────────
-        const createdFilter = {
-            createdBy: userId,
-            status: { $in: ["waiting", "active"] },
-            moderationStatus: "ok",
-        };
-        const createdTotal  = await Challenge.countDocuments(createdFilter);
-        const createdItems  = await Challenge.find(createdFilter)
-            .populate("createdBy", "name profile_picture")
-            .populate("category", "name")
-            .sort({ createdAt: -1 })
-            .skip((createdPage - 1) * limit)
-            .limit(limit);
+            Challenge.find({
+                createdBy: userId,
+                status: { $in: ["waiting", "active"] },
+                moderationStatus: "ok",
+            })
+                .populate("createdBy", "name profile_picture")
+                .populate("category", "name")
+                .sort({ createdAt: -1 }),
 
-        // ── Completed ─────────────────────────────────────────────────────────
-        const completedFilter = {
-            _id: { $in: myChallengeIds },
-            status: "completed",
-            moderationStatus: "ok",
-        };
-        const completedTotal  = await Challenge.countDocuments(completedFilter);
-        const completedItems  = await Challenge.find(completedFilter)
-            .populate("createdBy", "name profile_picture")
-            .populate("category", "name")
-            .populate("winner", "name profile_picture")
-            .sort({ updatedAt: -1 })
-            .skip((completedPage - 1) * limit)
-            .limit(limit);
+            Challenge.find({
+                _id: { $in: myChallengeIds },
+                status: "completed",
+                moderationStatus: "ok",
+            })
+                .populate("createdBy", "name profile_picture")
+                .populate("category", "name")
+                .populate("winner", "name profile_picture")
+                .sort({ updatedAt: -1 }),
+        ]);
+
+        // ── Merge all challenges into one flat list and paginate ──────────────
+        const allChallenges = [...ongoing, ...createdByMe, ...completed];
+        const totalItems    = allChallenges.length;
+        const totalPages    = Math.ceil(totalItems / pageSize);
+        const items         = allChallenges.slice(skip, skip + pageSize);
 
         // Pending invites count (for badge/tab indicator)
         const pendingInvitesCount = await ChallengeParticipant.countDocuments({
@@ -821,29 +813,13 @@ exports.getMyChallenges = async (req, res) => {
         res.status(200).json({
             success: true,
             pendingInvitesCount,
-            ongoing: {
-                currentPage: ongoingPage,
-                totalPages: Math.ceil(ongoingTotal / limit),
-                totalItems: ongoingTotal,
-                pageSize: limit,
-                itemsCount: ongoingItems.length,
-                results: ongoingItems,
-            },
-            createdByMe: {
-                currentPage: createdPage,
-                totalPages: Math.ceil(createdTotal / limit),
-                totalItems: createdTotal,
-                pageSize: limit,
-                itemsCount: createdItems.length,
-                results: createdItems,
-            },
-            completed: {
-                currentPage: completedPage,
-                totalPages: Math.ceil(completedTotal / limit),
-                totalItems: completedTotal,
-                pageSize: limit,
-                itemsCount: completedItems.length,
-                results: completedItems,
+            pagination: {
+                currentPage,
+                totalPages,
+                totalItems,
+                pageSize,
+                itemsCount: items.length,
+                results: items,
             },
         });
     } catch (error) {
