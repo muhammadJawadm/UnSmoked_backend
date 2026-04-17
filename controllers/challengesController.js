@@ -210,6 +210,8 @@ exports.createChallenge = async (req, res) => {
                 Date.now() + challengeData.durationDays * 24 * 60 * 60 * 1000
             );
         }
+        // ── 1v1 / 4-player challenges start as "pending" (no invites yet) ───
+        // The model default is already "pending"; this is just a comment marker.
 
         const challenge = await Challenge.create(challengeData);
 
@@ -231,7 +233,7 @@ exports.createChallenge = async (req, res) => {
             message:
                 mode === "open"
                     ? "Open challenge created and is now active"
-                    : "Challenge created successfully",
+                    : "Challenge created. Invite players to move it to 'waiting'",
             challenge: populated,
         });
     } catch (error) {
@@ -264,10 +266,13 @@ exports.invitePlayers = async (req, res) => {
                 message: "Only the challenge creator can invite players",
             });
         }
-        if (challenge.status !== "waiting") {
+        if (challenge.status !== "pending") {
             return res.status(400).json({
                 success: false,
-                message: "Cannot invite to a challenge that is not in waiting status",
+                message:
+                    challenge.status === "waiting"
+                        ? "Invites have already been sent. Challenge is now in waiting status"
+                        : `Cannot invite to a challenge with status '${challenge.status}'`,
             });
         }
         if (challenge.mode === "open") {
@@ -329,9 +334,13 @@ exports.invitePlayers = async (req, res) => {
             { type: "challenge_invite", challengeId: challenge._id.toString() }
         );
 
+        // ── Transition challenge from "pending" → "waiting" ────────────────
+        challenge.status = "waiting";
+        await challenge.save();
+
         return res.status(201).json({
             success: true,
-            message: `${toInvite.length} invite(s) sent`,
+            message: `${toInvite.length} invite(s) sent. Challenge is now in 'waiting' status`,
             participants,
         });
     } catch (error) {
@@ -649,7 +658,10 @@ exports.startChallenge = async (req, res) => {
         if (challenge.status !== "waiting") {
             return res.status(400).json({
                 success: false,
-                message: `Challenge is already ${challenge.status}`,
+                message:
+                    challenge.status === "pending"
+                        ? "Challenge is still pending — invite players first"
+                        : `Challenge is already ${challenge.status}`,
             });
         }
 
@@ -713,10 +725,10 @@ exports.cancelChallenge = async (req, res) => {
                 message: "Only the challenge creator can cancel",
             });
         }
-        if (challenge.status !== "waiting") {
+        if (!["pending", "waiting"].includes(challenge.status)) {
             return res.status(400).json({
                 success: false,
-                message: "Can only cancel challenges in waiting status",
+                message: "Can only cancel challenges that are in 'pending' or 'waiting' status",
             });
         }
 
@@ -779,7 +791,7 @@ exports.getMyChallenges = async (req, res) => {
 
             Challenge.find({
                 createdBy: userId,
-                status: { $in: ["waiting", "active"] },
+                status: { $in: ["pending", "waiting", "active"] },
                 moderationStatus: "ok",
             })
                 .populate("createdBy", "name profile_picture")
@@ -1101,7 +1113,7 @@ exports.adminRemoveChallenge = async (req, res) => {
         }
 
         challenge.moderationStatus = "removed";
-        if (["active", "waiting"].includes(challenge.status)) {
+        if (["pending", "waiting", "active"].includes(challenge.status)) {
             challenge.status = "cancelled";
         }
         await challenge.save();

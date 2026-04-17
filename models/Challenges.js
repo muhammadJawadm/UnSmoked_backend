@@ -51,10 +51,15 @@ const challengeSchema = new mongoose.Schema(
         },
 
         // Lifecycle
+        // pending   → just created, no invites sent yet
+        // waiting   → invites sent, waiting for players to respond
+        // active    → challenge is running
+        // completed → challenge ended
+        // cancelled → creator cancelled
         status: {
             type: String,
-            enum: ["waiting", "active", "completed", "cancelled"],
-            default: "waiting",
+            enum: ["pending", "waiting", "active", "completed", "cancelled"],
+            default: "pending",
         },
         startAt: { type: Date, default: null },
         endsAt: { type: Date, default: null },
