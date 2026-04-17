@@ -13,8 +13,10 @@ const {
     updateUser,
     deleteUser,
     loginUser,
-    changePassword
+    changePassword,
+    getAllUsers
 } = require("../controllers/authController");
+
 const verifyToken = require("../middleware/verifyToken");
 // Authentication routes
 router.post("/register", registerUser);
@@ -33,8 +35,10 @@ router.post("/complete-profile", verifyToken, completeProfile);
 router.put("/change-password", verifyToken, changePassword);
 
 // Admin routes (optional - add authentication middleware if needed)
+router.get("/users", verifyToken, getAllUsers);
 router.put("/:id", updateUser);
 router.delete("/:id", deleteUser);
+
 
 
 module.exports = router;

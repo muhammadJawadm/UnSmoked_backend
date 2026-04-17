@@ -586,3 +586,50 @@ exports.deleteUser = async (req, res) => {
         res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
+
+// Get all users (Admin) with pagination
+// GET /auth/users?page=1&limit=10&search=john
+exports.getAllUsers = async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const search = req.query.search ? req.query.search.trim() : "";
+
+        const skip = (page - 1) * limit;
+
+        // Build search filter
+        const filter = { role: "user" };
+        if (search) {
+            filter.$or = [
+                { name: { $regex: search, $options: "i" } },
+                { email: { $regex: search, $options: "i" } },
+                { phone: { $regex: search, $options: "i" } },
+            ];
+        }
+
+        const totalItems = await User.countDocuments(filter);
+        const totalPages = Math.ceil(totalItems / limit);
+        const currentPage = page;
+
+        const users = await User.find(filter)
+            .select("-password -fcm_tokens")
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        res.status(200).json({
+            success: true,
+            pagination: {
+                currentPage,
+                totalPages,
+                totalItems,
+                pageSize: limit,
+                itemsCount: users.length,
+                results: users,
+            },
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal server error" });
+    }
+};
