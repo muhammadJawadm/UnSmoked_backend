@@ -50,6 +50,9 @@ router.post("/:id/complete", verifyToken, challengesController.completeChallenge
 // 15. Discover Preset Challenges
 router.get("/discover", verifyToken, challengesController.discoverChallenges);
 
+// 16. My Active Challenge — full detail + board (token only, no params)
+router.get("/my-active", verifyToken, challengesController.getMyActiveChallenge);
+
 // Admin: Remove a Challenge
 router.post("/admin/:id/remove", verifyToken, challengesController.adminRemoveChallenge);
 

@@ -1384,6 +1384,134 @@ exports.discoverChallenges = async (req, res) => {
     }
 };
 
+// ─── 16. My Active Challenge — full detail + board ─────────────────────────
+// GET /challenges/my-active
+// User just passes their token — returns the single active challenge they're in
+// (challenge info + leaderboard + today's ChallengeDailyBoard + all days filled).
+exports.getMyActiveChallenge = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // ── Find the user's active challenge participation ─────────────────
+        const myParticipations = await ChallengeParticipant.find({
+            userId,
+            inviteStatus: "accepted",
+        }).select("challengeId");
+
+        if (!myParticipations.length) {
+            return res.status(404).json({
+                success: false,
+                message: "You don't have any active challenge right now",
+            });
+        }
+
+        const challengeIds = myParticipations.map((p) => p.challengeId);
+
+        const challenge = await Challenge.findOne({
+            _id: { $in: challengeIds },
+            status: "active",
+            moderationStatus: "ok",
+        })
+            .populate("createdBy", "name profile_picture")
+            .populate("category", "name")
+            .populate("winner", "name profile_picture");
+
+        if (!challenge) {
+            return res.status(404).json({
+                success: false,
+                message: "You don't have any active challenge right now",
+            });
+        }
+
+        // ── My participant record ──────────────────────────────────────────
+        const myParticipant = await ChallengeParticipant.findOne({
+            challengeId: challenge._id,
+            userId,
+            inviteStatus: "accepted",
+        });
+
+        // ── Live standings (all accepted participants, ranked by board stats) ─
+        const allParticipants = await ChallengeParticipant.find({
+            challengeId: challenge._id,
+            inviteStatus: "accepted",
+        })
+            .populate("userId", "name profile_picture")
+            .sort({ "challengeBoardStats.totalCigarettesAvoided": -1 });
+
+        const standings = allParticipants.map((p, i) => ({
+            rank: i + 1,
+            user: p.userId,
+            challengeBoardStats: p.challengeBoardStats,
+            isMe: p.userId?._id?.toString() === userId,
+            xpEarned: p.xpEarned,
+        }));
+
+        // ── Today's ChallengeDailyBoard (auto-create if missing) ──────────
+        const user = await User.findById(userId).select("cigarettes_per_day cost per amount_of_cigarettes_per_pack");
+        const todayUTC = new Date(Date.UTC(
+            new Date().getUTCFullYear(),
+            new Date().getUTCMonth(),
+            new Date().getUTCDate()
+        ));
+
+        let todayBoard = await ChallengeDailyBoard.findOne({
+            challengeId: challenge._id,
+            userId,
+            date: todayUTC,
+        });
+
+        if (!todayBoard) {
+            const existingCount = await ChallengeDailyBoard.countDocuments({
+                challengeId: challenge._id,
+                userId,
+            });
+            const cigarettesPerDay = (user && user.cigarettes_per_day > 0) ? user.cigarettes_per_day : 1;
+            todayBoard = await ChallengeDailyBoard.create({
+                challengeId: challenge._id,
+                userId,
+                day: existingCount + 1,
+                date: todayUTC,
+                smokes: new Array(cigarettesPerDay).fill(null),
+            });
+        }
+
+        // ── All days the user has filled in this challenge ────────────────
+        const allMyDays = await ChallengeDailyBoard.find({
+            challengeId: challenge._id,
+            userId,
+        }).sort({ day: 1 });
+
+        // ── Time remaining ────────────────────────────────────────────────
+        const timeLeftMs = challenge.endsAt
+            ? Math.max(0, new Date(challenge.endsAt) - new Date())
+            : null;
+
+        // Day number within the challenge (day 1 = first day)
+        const currentDay = challenge.startAt
+            ? Math.floor((todayUTC - new Date(challenge.startAt)) / (24 * 60 * 60 * 1000)) + 1
+            : 1;
+
+        res.status(200).json({
+            success: true,
+            challenge,
+            myParticipant,
+            myStats: myParticipant?.challengeBoardStats || {
+                totalCigarettesAvoided: 0,
+                totalCigarettesSmoked: 0,
+                totalDaysFilled: 0,
+            },
+            standings,
+            todayBoard,
+            allMyDays,
+            timeLeftMs,
+            currentDay,
+            totalDays: challenge.durationDays,
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // ─── Admin: Remove a Challenge ─────────────────────────────────────────────
 // POST /challenges/admin/:id/remove
 exports.adminRemoveChallenge = async (req, res) => {
