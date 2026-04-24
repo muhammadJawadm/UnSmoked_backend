@@ -26,7 +26,7 @@ const challengeParticipantSchema = new mongoose.Schema(
         },
         respondedAt: { type: Date, default: null },
 
-        // Progress (incremental logs)
+        // Progress (incremental logs) — kept for backward compat with log-progress API
         progressValue: { type: Number, default: 0, min: 0 },
         progressLog: [
             {
@@ -34,6 +34,14 @@ const challengeParticipantSchema = new mongoose.Schema(
                 loggedAt: { type: Date, default: Date.now },
             },
         ],
+
+        // Challenge board aggregate stats (populated via ChallengeDailyBoard marks)
+        // This is the authoritative source for winner determination & leaderboard.
+        challengeBoardStats: {
+            totalCigarettesAvoided: { type: Number, default: 0, min: 0 },
+            totalCigarettesSmoked:  { type: Number, default: 0, min: 0 },
+            totalDaysFilled:        { type: Number, default: 0, min: 0 },
+        },
 
         // XP awarded after challenge ends (0 = not yet awarded)
         xpEarned: { type: Number, default: 0, min: 0 },

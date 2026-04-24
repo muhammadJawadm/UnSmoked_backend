@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 
 const Challenge = require("../models/Challenges");
 const ChallengeParticipant = require("../models/ChallengeParticipant");
+const ChallengeDailyBoard = require("../models/ChallengeDailyBoard");
 const Template = require("../models/Template");
 const Category = require("../models/Category");
 const User = require("../models/User");
@@ -33,6 +34,70 @@ const ensureValidCategory = async (categoryId) => {
 };
 
 /**
+ * Helper: Get today's date at midnight UTC (shared with board helpers)
+ */
+const getTodayUTC = () => {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+};
+
+/**
+ * Helper: Check if a user is already an accepted participant in any active challenge.
+ */
+const hasActiveChallenge = async (userId) => {
+    // Find all challenges where user is accepted participant
+    const participations = await ChallengeParticipant.find({
+        userId,
+        inviteStatus: "accepted",
+    }).select("challengeId");
+
+    if (!participations.length) return false;
+
+    const challengeIds = participations.map((p) => p.challengeId);
+    const activeChallenge = await Challenge.findOne({
+        _id: { $in: challengeIds },
+        status: "active",
+        moderationStatus: "ok",
+    }).select("_id title");
+
+    return activeChallenge || null; // returns the active challenge or null
+};
+
+/**
+ * Helper: Create day-1 ChallengeDailyBoard for all accepted participants of a challenge.
+ * Called whenever a challenge transitions to "active".
+ */
+const createChallengeBoardsForParticipants = async (challenge) => {
+    const accepted = await ChallengeParticipant.find({
+        challengeId: challenge._id,
+        inviteStatus: "accepted",
+    }).select("userId");
+
+    const today = getTodayUTC();
+
+    for (const p of accepted) {
+        const user = await User.findById(p.userId).select("cigarettes_per_day");
+        const cigarettesPerDay = (user && user.cigarettes_per_day > 0) ? user.cigarettes_per_day : 1;
+        const smokes = new Array(cigarettesPerDay).fill(null);
+
+        // upsert — safe to call multiple times
+        await ChallengeDailyBoard.findOneAndUpdate(
+            { challengeId: challenge._id, userId: p.userId, date: today },
+            {
+                $setOnInsert: {
+                    challengeId: challenge._id,
+                    userId: p.userId,
+                    day: 1,
+                    date: today,
+                    smokes,
+                },
+            },
+            { upsert: true, new: true }
+        );
+    }
+};
+
+/**
  * Check whether a challenge should auto-activate based on accepted participant count.
  * 1v1  → activates when 1 invitee accepts
  * 4-player → activates when 3 invitees accept
@@ -52,6 +117,10 @@ const tryAutoActivate = async (challenge) => {
     challenge.startAt = new Date();
     challenge.endsAt = new Date(Date.now() + challenge.durationDays * 24 * 60 * 60 * 1000);
     await challenge.save();
+
+    // Auto-create day-1 challenge boards for all accepted participants
+    await createChallengeBoardsForParticipants(challenge);
+
     return true;
 };
 
@@ -92,6 +161,16 @@ const awardXPToParticipants = async (challenge) => {
 exports.createChallenge = async (req, res) => {
     try {
         const createdBy = req.user.id;
+
+        // ── Block if user already has an active challenge ──────────────────
+        const existingActive = await hasActiveChallenge(createdBy);
+        if (existingActive) {
+            return res.status(400).json({
+                success: false,
+                message: `You already have an active challenge ("${existingActive.title}"). Please complete or wait for it to end before creating a new one.`,
+                activeChallengeId: existingActive._id,
+            });
+        }
         const {
             mode,
             sourceType,
@@ -370,11 +449,38 @@ exports.getMyInvites = async (req, res) => {
                 path: "challengeId",
                 populate: { path: "createdBy", select: "name profile_picture" },
             })
+            .populate({
+                path: "challengeId",
+                populate: { path: "category", select: "name" },
+            })
             .skip(skip)
             .limit(pageSize)
             .sort({ createdAt: -1 });
 
         const totalPages = Math.ceil(totalItems / pageSize);
+
+        // ── Enrich each invite with accepted-participant info for that challenge ──
+        const enrichedInvites = await Promise.all(
+            invites.map(async (invite) => {
+                const challengeId = invite.challengeId?._id || invite.challengeId;
+
+                // Find all participants who accepted this challenge
+                const acceptedParticipants = await ChallengeParticipant.find({
+                    challengeId,
+                    inviteStatus: "accepted",
+                }).populate("userId", "name profile_picture");
+
+                const inviteObj = invite.toObject();
+                inviteObj.acceptedCount = acceptedParticipants.length;
+                inviteObj.acceptedParticipants = acceptedParticipants.map((p) => ({
+                    userId: p.userId?._id,
+                    name: p.userId?.name || null,
+                    profilePicture: p.userId?.profile_picture || null,
+                }));
+
+                return inviteObj;
+            })
+        );
 
         res.status(200).json({
             success: true,
@@ -383,8 +489,8 @@ exports.getMyInvites = async (req, res) => {
                 totalPages,
                 totalItems,
                 pageSize,
-                itemsCount: invites.length,
-                results: invites,
+                itemsCount: enrichedInvites.length,
+                results: enrichedInvites,
             },
         });
     } catch (error) {
@@ -493,6 +599,21 @@ exports.respondToInvite = async (req, res) => {
         let challengeActivated = false;
 
         if (action === "accept") {
+            // ── Block if user already has an active challenge ──────────────
+            const existingActive = await hasActiveChallenge(userId);
+            if (existingActive) {
+                // Roll back the accept we just saved
+                participant.inviteStatus = "pending";
+                participant.respondedAt = null;
+                await participant.save();
+
+                return res.status(400).json({
+                    success: false,
+                    message: `You already have an active challenge ("${existingActive.title}"). You cannot join another until it ends.`,
+                    activeChallengeId: existingActive._id,
+                });
+            }
+
             challengeActivated = await tryAutoActivate(challenge);
 
             if (challengeActivated) {
@@ -704,6 +825,9 @@ exports.startChallenge = async (req, res) => {
         );
         await challenge.save();
 
+        // Create day-1 challenge boards for all accepted participants
+        await createChallengeBoardsForParticipants(challenge);
+
         // Notify all accepted participants
         const accepted = await ChallengeParticipant.find({
             challengeId: id,
@@ -780,14 +904,18 @@ exports.cancelChallenge = async (req, res) => {
 };
 
 // ─── 11. My Challenges Hub — S1 (Ongoing / Created / Completed) ───────────
-// GET /challenges/my?page=1&limit=10
+// GET /challenges/my?page=1&limit=10&status=all|ongoing|created|completed|pending|waiting|cancelled
 exports.getMyChallenges = async (req, res) => {
     try {
         const userId = req.user.id;
 
-        const currentPage = parseInt(req.query.page)  || 1;
-        const pageSize    = parseInt(req.query.limit)  || 10;
+        const currentPage = parseInt(req.query.page) || 1;
+        const pageSize    = parseInt(req.query.limit) || 10;
         const skip        = (currentPage - 1) * pageSize;
+
+        // Allowed status values (default → "all")
+        const VALID_STATUSES = ["all", "ongoing", "created", "completed", "pending", "waiting", "cancelled"];
+        const status = VALID_STATUSES.includes(req.query.status) ? req.query.status : "all";
 
         // Find all challenge IDs where I'm an accepted participant
         const myParticipations = await ChallengeParticipant.find({
@@ -796,45 +924,119 @@ exports.getMyChallenges = async (req, res) => {
         }).select("challengeId");
         const myChallengeIds = myParticipations.map((p) => p.challengeId);
 
-        // ── Fetch all three lists (full, unpaginated) for accurate totals ─────
-        const [ongoing, createdByMe, completed] = await Promise.all([
+        const populateOpts = [
+            { path: "createdBy", select: "name profile_picture" },
+            { path: "category",  select: "name" },
+            { path: "winner",    select: "name profile_picture" },
+        ];
+
+        // ── Helper: run a DB query only when needed ──────────────────────────
+        const fetchOngoing = () =>
             Challenge.find({
                 _id: { $in: myChallengeIds },
                 status: "active",
                 moderationStatus: "ok",
-            })
-                .populate("createdBy", "name profile_picture")
-                .populate("category", "name")
-                .populate("winner", "name profile_picture")
-                .sort({ startAt: -1 }),
+            }).populate(populateOpts).sort({ startAt: -1 });
 
+        const fetchCreated = () =>
             Challenge.find({
                 createdBy: userId,
                 status: { $in: ["pending", "waiting", "active"] },
                 moderationStatus: "ok",
-            })
-                .populate("createdBy", "name profile_picture")
-                .populate("category", "name")
-                .sort({ createdAt: -1 }),
+            }).populate(populateOpts).sort({ createdAt: -1 });
 
+        const fetchCompleted = () =>
             Challenge.find({
                 _id: { $in: myChallengeIds },
                 status: "completed",
                 moderationStatus: "ok",
-            })
-                .populate("createdBy", "name profile_picture")
-                .populate("category", "name")
-                .populate("winner", "name profile_picture")
-                .sort({ updatedAt: -1 }),
+            }).populate(populateOpts).sort({ updatedAt: -1 });
+
+        const fetchPending = () =>
+            Challenge.find({
+                createdBy: userId,
+                status: "pending",
+                moderationStatus: "ok",
+            }).populate(populateOpts).sort({ createdAt: -1 });
+
+        const fetchWaiting = () =>
+            Challenge.find({
+                createdBy: userId,
+                status: "waiting",
+                moderationStatus: "ok",
+            }).populate(populateOpts).sort({ createdAt: -1 });
+
+        const fetchCancelled = () =>
+            Challenge.find({
+                $or: [
+                    { createdBy: userId },
+                    { _id: { $in: myChallengeIds } },
+                ],
+                status: "cancelled",
+                moderationStatus: "ok",
+            }).populate(populateOpts).sort({ updatedAt: -1 });
+
+        // ── Fetch counts for all tabs (always, for UI badge display) ─────────
+        const [
+            ongoingCount,
+            createdCount,
+            completedCount,
+            pendingCount,
+            waitingCount,
+            cancelledCount,
+        ] = await Promise.all([
+            Challenge.countDocuments({ _id: { $in: myChallengeIds }, status: "active",    moderationStatus: "ok" }),
+            Challenge.countDocuments({ createdBy: userId, status: { $in: ["pending", "waiting", "active"] }, moderationStatus: "ok" }),
+            Challenge.countDocuments({ _id: { $in: myChallengeIds }, status: "completed", moderationStatus: "ok" }),
+            Challenge.countDocuments({ createdBy: userId, status: "pending",   moderationStatus: "ok" }),
+            Challenge.countDocuments({ createdBy: userId, status: "waiting",   moderationStatus: "ok" }),
+            Challenge.countDocuments({
+                $or: [{ createdBy: userId }, { _id: { $in: myChallengeIds } }],
+                status: "cancelled",
+                moderationStatus: "ok",
+            }),
         ]);
 
-        // ── Merge all challenges into one flat list and paginate ──────────────
-        const allChallenges = [...ongoing, ...createdByMe, ...completed];
-        const totalItems    = allChallenges.length;
-        const totalPages    = Math.ceil(totalItems / pageSize);
-        const items         = allChallenges.slice(skip, skip + pageSize);
+        // ── Fetch the list matching the requested status ─────────────────────
+        let resultList = [];
 
-        // Pending invites count (for badge/tab indicator)
+        switch (status) {
+            case "ongoing":
+                resultList = await fetchOngoing();
+                break;
+            case "created":
+                resultList = await fetchCreated();
+                break;
+            case "completed":
+                resultList = await fetchCompleted();
+                break;
+            case "pending":
+                resultList = await fetchPending();
+                break;
+            case "waiting":
+                resultList = await fetchWaiting();
+                break;
+            case "cancelled":
+                resultList = await fetchCancelled();
+                break;
+            case "all":
+            default: {
+                const [ongoing, createdByMe, completed] = await Promise.all([
+                    fetchOngoing(),
+                    fetchCreated(),
+                    fetchCompleted(),
+                ]);
+                resultList = [...ongoing, ...createdByMe, ...completed];
+                break;
+            }
+        }
+
+        // ── Paginate ─────────────────────────────────────────────────────────
+        const totalItems = resultList.length;
+        const totalPages = Math.ceil(totalItems / pageSize) || 1;
+        const items = resultList.slice(skip, skip + pageSize);
+
+        // Pending invites count (for notification badge)
         const pendingInvitesCount = await ChallengeParticipant.countDocuments({
             userId,
             role: "invitee",
@@ -843,7 +1045,17 @@ exports.getMyChallenges = async (req, res) => {
 
         res.status(200).json({
             success: true,
+            activeStatus: status,
             pendingInvitesCount,
+            tabCounts: {
+                all:       ongoingCount + createdCount + completedCount,
+                ongoing:   ongoingCount,
+                created:   createdCount,
+                completed: completedCount,
+                pending:   pendingCount,
+                waiting:   waitingCount,
+                cancelled: cancelledCount,
+            },
             pagination: {
                 currentPage,
                 totalPages,
@@ -1012,11 +1224,11 @@ exports.completeChallenge = async (req, res) => {
                 });
             }
 
-            // Determine winner: highest progress value
+            // Determine winner: highest cigarettesAvoided on the challenge board
             const allParticipants = await ChallengeParticipant.find({
                 challengeId: id,
                 inviteStatus: "accepted",
-            }).sort({ progressValue: -1 });
+            }).sort({ "challengeBoardStats.totalCigarettesAvoided": -1 });
 
             challenge.winner = allParticipants[0]?.userId || null;
             challenge.status = "completed";
@@ -1071,10 +1283,12 @@ exports.completeChallenge = async (req, res) => {
 // GET /challenges/discover?category=Health
 exports.discoverChallenges = async (req, res) => {
     try {
+        const userId = req.user.id;
         const { category } = req.query;
         const categoryQuery = typeof category === "string" ? category.trim() : "";
 
-        const filter = { isActive: true, isCustom: false };
+        // ── Resolve category filter (shared for both templates & open challenges) ─
+        let resolvedCategoryId = null;
         if (categoryQuery && categoryQuery.toLowerCase() !== "all") {
             if (mongoose.Types.ObjectId.isValid(categoryQuery)) {
                 const categoryExists = await Category.exists({ _id: categoryQuery });
@@ -1084,7 +1298,7 @@ exports.discoverChallenges = async (req, res) => {
                         message: "Invalid category. Category not found",
                     });
                 }
-                filter.category = categoryQuery;
+                resolvedCategoryId = categoryQuery;
             } else {
                 const categoryDoc = await Category.findOne({
                     name: { $regex: `^${escapeRegex(categoryQuery)}$`, $options: "i" },
@@ -1096,20 +1310,73 @@ exports.discoverChallenges = async (req, res) => {
                         message: "Invalid category. Category not found",
                     });
                 }
-
-                filter.category = categoryDoc._id;
+                resolvedCategoryId = categoryDoc._id;
             }
         }
 
-        const templates = await Template.find(filter)
+        // ── Templates (preset blueprints) ────────────────────────────────────
+        const templateFilter = { isActive: true, isCustom: false };
+        if (resolvedCategoryId) templateFilter.category = resolvedCategoryId;
+
+        const templates = await Template.find(templateFilter)
             .populate("category", "name")
             .sort({ createdAt: -1 });
 
+        // ── Open challenges: active, open-mode, only creator has joined so far ─
+        // "No one joined" means: the only accepted participant is the creator
+        // (participantCount === 1). We exclude challenges the requesting user
+        // has already joined so they don't appear as joinable to themselves.
+        const openChallengeFilter = {
+            mode: "open",
+            status: "active",
+            moderationStatus: "ok",
+            createdBy: { $ne: userId },   // don't show own challenges here
+        };
+        if (resolvedCategoryId) openChallengeFilter.category = resolvedCategoryId;
+
+        const candidateOpenChallenges = await Challenge.find(openChallengeFilter)
+            .populate("createdBy", "name profile_picture")
+            .populate("category", "name")
+            .sort({ startAt: -1 })
+            .lean();
+
+        // For each candidate, count accepted participants
+        const openChallengesWithStats = await Promise.all(
+            candidateOpenChallenges.map(async (ch) => {
+                const participantCount = await ChallengeParticipant.countDocuments({
+                    challengeId: ch._id,
+                    inviteStatus: "accepted",
+                });
+
+                // Check if requesting user already joined this challenge
+                const alreadyJoined = await ChallengeParticipant.exists({
+                    challengeId: ch._id,
+                    userId,
+                    inviteStatus: "accepted",
+                });
+
+                return {
+                    ...ch,
+                    participantCount,
+                    alreadyJoined: !!alreadyJoined,
+                    // "solo" = only the creator is in it (no one else joined yet)
+                    isSolo: participantCount <= 1,
+                };
+            })
+        );
+
+        // Filter: only challenges the user has NOT already joined
+        const joinableOpenChallenges = openChallengesWithStats.filter(
+            (ch) => !ch.alreadyJoined
+        );
+
+        // ── Categories (for filter tabs on the UI) ───────────────────────────
         const categories = await Category.find().select("name").sort({ name: 1 });
 
         res.status(200).json({
             success: true,
             templates,
+            openChallenges: joinableOpenChallenges,
             categories: ["All", ...categories.map((c) => c.name)],
         });
     } catch (error) {

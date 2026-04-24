@@ -1,0 +1,542 @@
+{
+  "info": {
+    "_postman_id": "9bb053f0-3dfa-4f35-b1ad-8cb5c4d7de44",
+    "name": "Unsmoked Content Modules",
+    "description": "Postman setup for Quick Wins, Motivational Tips, and Health Body modules.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Quick Wins",
+      "item": [
+        {
+          "name": "Create Quick Win (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"2-Minute Breathing Break\",\n  \"description\": \"Take two minutes for mindful breathing.\",\n  \"read_time\": 2,\n  \"icon\": \"lungs\",\n  \"is_active\": true,\n  \"sort_order\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/quick-wins",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quick-wins"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Quick Wins (Public)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/quick-wins",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quick-wins"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Quick Wins (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/quick-wins/all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quick-wins",
+                "all"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Quick Win By ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/quick-wins/{{quick_win_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quick-wins",
+                "{{quick_win_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Quick Win (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"2-Minute Breathing Reset\",\n  \"description\": \"Refresh your focus with a short breathing reset.\",\n  \"read_time\": 2,\n  \"icon\": \"wind\",\n  \"is_active\": true,\n  \"sort_order\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/quick-wins/{{quick_win_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quick-wins",
+                "{{quick_win_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Quick Win (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/quick-wins/{{quick_win_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quick-wins",
+                "{{quick_win_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Motivational Tips",
+      "item": [
+        {
+          "name": "Create Motivational Tip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tip\": \"Every craving passes if you pause and breathe.\",\n  \"category\": \"Mindset\",\n  \"is_active\": true,\n  \"is_featured\": true,\n  \"is_fact_of_day\": false,\n  \"source\": \"Coach\",\n  \"read_time\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/motivationaltips",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "motivationaltips"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Motivational Tips",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/motivationaltips",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "motivationaltips"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Mobile Home Data",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/motivationaltips/mobile-home",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "motivationaltips",
+                "mobile-home"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Featured Tip",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/motivationaltips/featured",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "motivationaltips",
+                "featured"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Fact Of The Day",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/motivationaltips/fact-of-the-day",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "motivationaltips",
+                "fact-of-the-day"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Motivational Tip By ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/motivationaltips/{{motivational_tip_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "motivationaltips",
+                "{{motivational_tip_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Motivational Tip",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tip\": \"One good choice at a time builds momentum.\",\n  \"category\": \"Mindset\",\n  \"is_active\": true,\n  \"is_featured\": false,\n  \"is_fact_of_day\": true,\n  \"source\": \"Coach\",\n  \"read_time\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/motivationaltips/{{motivational_tip_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "motivationaltips",
+                "{{motivational_tip_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Motivational Tip",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/motivationaltips/{{motivational_tip_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "motivationaltips",
+                "{{motivational_tip_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health Body",
+      "item": [
+        {
+          "name": "Create Health Body Tip (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Hydrate Early\",\n  \"description\": \"Drink a full glass of water after waking up.\",\n  \"category\": \"Hydration\",\n  \"category_tag\": \"daily\",\n  \"icon\": \"water\",\n  \"read_time\": 1,\n  \"is_active\": true,\n  \"sort_order\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/health-body",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health-body"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Health Body Tips",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/health-body",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health-body"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Health Body Tips (By Category)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/health-body?category=Hydration",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health-body"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "Hydration"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Health Body Categories",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/health-body/categories",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health-body",
+                "categories"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Health Body Tips (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/health-body/all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health-body",
+                "all"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Health Body Tip By ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/health-body/{{health_body_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health-body",
+                "{{health_body_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Health Body Tip (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Hydrate Through The Day\",\n  \"description\": \"Track water intake and sip regularly.\",\n  \"category\": \"Hydration\",\n  \"category_tag\": \"daily\",\n  \"icon\": \"water\",\n  \"read_time\": 1,\n  \"is_active\": true,\n  \"sort_order\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/health-body/{{health_body_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health-body",
+                "{{health_body_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Health Body Tip (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/health-body/{{health_body_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health-body",
+                "{{health_body_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "token",
+      "value": "<YOUR_AUTH_TOKEN>"
+    },
+    {
+      "key": "quick_win_id",
+      "value": "<QUICK_WIN_ID>"
+    },
+    {
+      "key": "motivational_tip_id",
+      "value": "<MOTIVATIONAL_TIP_ID>"
+    },
+    {
+      "key": "health_body_id",
+      "value": "<HEALTH_BODY_ID>"
+    }
+  ]
+}
