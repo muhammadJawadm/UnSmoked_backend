@@ -17,8 +17,29 @@ exports.createMotivationalTip = async (req, res) => {
 
 exports.getAllMotivationalTips = async (req, res) => {
     try {
-        const motivationalTips = await MotivationalTip.find({ is_active: true }).sort({ createdAt: -1 });
-        res.status(200).json({ success: true, message: "Motivational tips fetched successfully", motivationalTips });
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
+        const skip = (page - 1) * limit;
+
+        const totalItems = await MotivationalTip.countDocuments({ is_active: true });
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const motivationalTips = await MotivationalTip.find({ is_active: true })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        res.status(200).json({
+            success: true,
+            pagination: {
+                currentPage: page,
+                totalPages,
+                totalItems,
+                pageSize: limit,
+                itemsCount: motivationalTips.length,
+                results: motivationalTips,
+            },
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

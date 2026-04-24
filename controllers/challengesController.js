@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 
 const Challenge = require("../models/Challenges");
 const ChallengeParticipant = require("../models/ChallengeParticipant");
-const ChallengeDailyBoard = require("../models/ChallengeDailyBoard");
+const DailyBoard = require("../models/DailyBoard");
 const Template = require("../models/Template");
 const Category = require("../models/Category");
 const User = require("../models/User");
@@ -64,7 +64,7 @@ const hasActiveChallenge = async (userId) => {
 };
 
 /**
- * Helper: Create day-1 ChallengeDailyBoard for all accepted participants of a challenge.
+ * Helper: Create day-1 DailyBoard (challengeId=<id>) for all accepted participants.
  * Called whenever a challenge transitions to "active".
  */
 const createChallengeBoardsForParticipants = async (challenge) => {
@@ -81,7 +81,7 @@ const createChallengeBoardsForParticipants = async (challenge) => {
         const smokes = new Array(cigarettesPerDay).fill(null);
 
         // upsert — safe to call multiple times
-        await ChallengeDailyBoard.findOneAndUpdate(
+        await DailyBoard.findOneAndUpdate(
             { challengeId: challenge._id, userId: p.userId, date: today },
             {
                 $setOnInsert: {
@@ -1446,27 +1446,23 @@ exports.getMyActiveChallenge = async (req, res) => {
             xpEarned: p.xpEarned,
         }));
 
-        // ── Today's ChallengeDailyBoard (auto-create if missing) ──────────
+        // ── Today's challenge DailyBoard (challengeId = <id>, auto-create if missing) ──
         const user = await User.findById(userId).select("cigarettes_per_day cost per amount_of_cigarettes_per_pack");
-        const todayUTC = new Date(Date.UTC(
-            new Date().getUTCFullYear(),
-            new Date().getUTCMonth(),
-            new Date().getUTCDate()
-        ));
+        const todayUTC = getTodayUTC();
 
-        let todayBoard = await ChallengeDailyBoard.findOne({
+        let todayBoard = await DailyBoard.findOne({
             challengeId: challenge._id,
             userId,
             date: todayUTC,
         });
 
         if (!todayBoard) {
-            const existingCount = await ChallengeDailyBoard.countDocuments({
+            const existingCount = await DailyBoard.countDocuments({
                 challengeId: challenge._id,
                 userId,
             });
             const cigarettesPerDay = (user && user.cigarettes_per_day > 0) ? user.cigarettes_per_day : 1;
-            todayBoard = await ChallengeDailyBoard.create({
+            todayBoard = await DailyBoard.create({
                 challengeId: challenge._id,
                 userId,
                 day: existingCount + 1,
@@ -1476,7 +1472,7 @@ exports.getMyActiveChallenge = async (req, res) => {
         }
 
         // ── All days the user has filled in this challenge ────────────────
-        const allMyDays = await ChallengeDailyBoard.find({
+        const allMyDays = await DailyBoard.find({
             challengeId: challenge._id,
             userId,
         }).sort({ day: 1 });

@@ -77,34 +77,42 @@ app.listen(port, () => {
     setInterval(async () => {
         try {
             const now = new Date();
-            const toComplete = await Challenge.find({ status: "active", endsAt: { $lte: now } });
+
+            // Use lean() so Mongoose does NOT try to cast/validate old docs
+            // (some old challenges have category stored as a string, not ObjectId)
+            const toComplete = await Challenge.find({ status: "active", endsAt: { $lte: now } })
+                .lean();
 
             for (const challenge of toComplete) {
-                // Determine winner
+                // Determine winner by new challenge board stats
                 const participants = await ChallengeParticipant.find({
                     challengeId: challenge._id,
                     inviteStatus: "accepted",
-                }).sort({ progressValue: -1 });
+                }).sort({ "challengeBoardStats.totalCigarettesAvoided": -1 });
 
-                challenge.winner = participants[0]?.userId || null;
-                challenge.status = "completed";
-                await challenge.save();
+                const winnerId = participants[0]?.userId || null;
+
+                // Use findByIdAndUpdate to avoid re-validating the stale doc
+                await Challenge.findByIdAndUpdate(challenge._id, {
+                    status: "completed",
+                    winner: winnerId,
+                });
 
                 // Award XP and badges
                 for (const p of participants) {
                     if (p.xpEarned > 0) continue; // skip already awarded
-                    
-                    const isWinner = challenge.winner?.toString() === p.userId.toString();
+
+                    const isWinner = winnerId?.toString() === p.userId.toString();
                     const xp = isWinner ? challenge.xpReward : Math.floor(challenge.xpReward / 2);
-                    
+
                     p.xpEarned = xp;
                     await p.save();
-                    
+
                     const updatedProgress = await addXP(p.userId.toString(), xp);
                     await checkAndAssignBadge(p.userId.toString(), "completion", updatedProgress.challengesCompleted);
                     await checkAndAssignBadge(p.userId.toString(), "milestone", updatedProgress.level);
                 }
-                
+
                 // Notify users
                 const playerIds = participants.map((p) => p.userId.toString());
                 const sendNotificationToUsers = require("./utils/sendNotification");
