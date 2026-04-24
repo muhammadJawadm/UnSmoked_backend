@@ -18,17 +18,15 @@ const sendNotificationToUsers = async (userIds, title, body, data = {}) => {
     // Fetch users with FCM tokens
     const users = await User.find({
         _id: { $in: userIds },
-        fcm_tokens: { $exists: true, $ne: [] },
-    }).select("fcm_tokens");
+        fcm_token: { $exists: true, $ne: "" },
+    }).select("fcm_token");
 
     if (users.length === 0) return { successCount: 0, failureCount: 0 };
 
     // Collect all FCM tokens
     const fcmTokens = [];
     users.forEach((user) => {
-        user.fcm_tokens.forEach((token) => {
-            if (token) fcmTokens.push(token);
-        });
+        if (user.fcm_token) fcmTokens.push(user.fcm_token);
     });
 
     if (fcmTokens.length === 0) return { successCount: 0, failureCount: 0 };

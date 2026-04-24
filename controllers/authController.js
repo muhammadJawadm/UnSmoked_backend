@@ -498,10 +498,7 @@ exports.updateUser = async (req, res) => {
         if (req.body.health_goal) user.health_goal = req.body.health_goal;
         if (req.body.about_me) user.about_me = req.body.about_me;
         if (req.body.fcm_token) {
-            // Add to the tokens array without duplicates
-            if (!user.fcm_tokens.includes(req.body.fcm_token)) {
-                user.fcm_tokens.push(req.body.fcm_token);
-            }
+            user.fcm_token = req.body.fcm_token;
         }
 
         user.updated_at = Date.now();
@@ -612,7 +609,7 @@ exports.getAllUsers = async (req, res) => {
         const currentPage = page;
 
         const users = await User.find(filter)
-            .select("-password -fcm_tokens")
+            .select("-password -fcm_token")
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);

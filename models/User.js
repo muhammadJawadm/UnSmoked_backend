@@ -15,13 +15,10 @@ const userSchema = new mongoose.Schema({
     amount_of_cigarettes_per_pack: { type: Number, default: 0 },
     health_goal: { type: String, default: "" },
     about_me: { type: String, default: "" },
-    fcm_tokens: [
-        { type: String },
-    ],
+    fcm_token: { type: String, default: "" },
     badges: [
         { type: mongoose.Schema.Types.ObjectId, ref: "BadgeTemplate" },
     ],
-
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);

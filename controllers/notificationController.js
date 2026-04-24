@@ -47,15 +47,15 @@ exports.sendNotification = async (req, res) => {
         if (mode === "broadcast") {
             // BROADCAST MODE: Send to all users
             users = await User.find({
-                fcm_tokens: { $exists: true, $ne: [] }
-            }).select('fcm_tokens');
+                fcm_token: { $exists: true, $ne: "" }
+            }).select('fcm_token');
 
             if (users.length === 0) {
                 return res.status(404).json({ success: false, message: "No users with registered FCM tokens found" });
             }
 
             users.forEach(user => {
-                user.fcm_tokens.forEach(token => { if (token) fcmTokens.push(token); });
+                if (user.fcm_token) fcmTokens.push(user.fcm_token);
             });
 
             if (fcmTokens.length === 0) {
@@ -70,15 +70,15 @@ exports.sendNotification = async (req, res) => {
             // MULTI-USER MODE: Send to a specific list of users
             users = await User.find({
                 _id: { $in: userIds },
-                fcm_tokens: { $exists: true, $ne: [] }
-            }).select('fcm_tokens');
+                fcm_token: { $exists: true, $ne: "" }
+            }).select('fcm_token');
 
             if (users.length === 0) {
                 return res.status(404).json({ success: false, message: "None of the specified users have registered FCM tokens" });
             }
 
             users.forEach(user => {
-                user.fcm_tokens.forEach(token => { if (token) fcmTokens.push(token); });
+                if (user.fcm_token) fcmTokens.push(user.fcm_token);
             });
 
             if (fcmTokens.length === 0) {
@@ -96,7 +96,7 @@ exports.sendNotification = async (req, res) => {
                 return res.status(404).json({ success: false, message: "User not found" });
             }
 
-            fcmTokens = user.fcm_tokens.filter(token => token);
+            fcmTokens = user.fcm_token ? [user.fcm_token] : [];
 
             if (fcmTokens.length === 0) {
                 return res.status(400).json({ success: false, message: "User has no registered FCM tokens" });
