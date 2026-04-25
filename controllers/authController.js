@@ -595,7 +595,7 @@ exports.getAllUsers = async (req, res) => {
         const skip = (page - 1) * limit;
 
         // Build search filter
-        const filter = { role: "user" };
+        const filter = { role: "user", is_verified: true };
         if (search) {
             filter.$or = [
                 { name: { $regex: search, $options: "i" } },
