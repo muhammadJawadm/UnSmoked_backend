@@ -6,8 +6,8 @@ const MotivationalTip = require("../models/MotivationalTip");
 
 exports.createMotivationalTip = async (req, res) => {
     try {
-        const { tip, category, is_active, is_featured, is_fact_of_day, source, read_time } = req.body;
-        const motivationalTip = new MotivationalTip({ tip, category, is_active, is_featured, is_fact_of_day, source, read_time });
+        const { tip, category, tag, description, is_active, is_featured, is_fact_of_day, source, read_time } = req.body;
+        const motivationalTip = new MotivationalTip({ tip, category, tag, description, is_active, is_featured, is_fact_of_day, source, read_time });
         await motivationalTip.save();
         res.status(201).json({ success: true, message: "Motivational tip created successfully", motivationalTip });
     } catch (error) {
@@ -59,10 +59,10 @@ exports.getMotivationalTip = async (req, res) => {
 
 exports.updateMotivationalTip = async (req, res) => {
     try {
-        const { tip, category, is_active, is_featured, is_fact_of_day, source, read_time } = req.body;
+        const { tip, category, tag, description, is_active, is_featured, is_fact_of_day, source, read_time } = req.body;
         const motivationalTip = await MotivationalTip.findByIdAndUpdate(
             req.params.id,
-            { tip, category, is_active, is_featured, is_fact_of_day, source, read_time },
+            { tip, category, tag, description, is_active, is_featured, is_fact_of_day, source, read_time },
             { new: true }
         );
         if (!motivationalTip) {

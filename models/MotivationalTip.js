@@ -9,6 +9,14 @@ const motivationalTipSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    tag: {
+        type: String,
+        default: ""
+    },
+    description: {
+        type: String,
+        default: ""
+    },
     // For the "Fact of the Day" banner at the top
     is_fact_of_day: {
         type: Boolean,
