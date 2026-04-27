@@ -1452,36 +1452,7 @@ exports.getMyActiveChallenge = async (req, res) => {
             xpEarned: p.xpEarned,
         }));
 
-        // ── Today's challenge DailyBoard (challengeId = <id>, auto-create if missing) ──
-        const user = await User.findById(userId).select("cigarettes_per_day cost per amount_of_cigarettes_per_pack");
         const todayUTC = getTodayUTC();
-
-        let todayBoard = await DailyBoard.findOne({
-            challengeId: challenge._id,
-            userId,
-            date: todayUTC,
-        });
-
-        if (!todayBoard) {
-            const existingCount = await DailyBoard.countDocuments({
-                challengeId: challenge._id,
-                userId,
-            });
-            const cigarettesPerDay = (user && user.cigarettes_per_day > 0) ? user.cigarettes_per_day : 1;
-            todayBoard = await DailyBoard.create({
-                challengeId: challenge._id,
-                userId,
-                day: existingCount + 1,
-                date: todayUTC,
-                smokes: new Array(cigarettesPerDay).fill(null),
-            });
-        }
-
-        // ── All days the user has filled in this challenge ────────────────
-        const allMyDays = await DailyBoard.find({
-            challengeId: challenge._id,
-            userId,
-        }).sort({ day: 1 });
 
         // ── Time remaining ────────────────────────────────────────────────
         const timeLeftMs = challenge.endsAt
@@ -1503,8 +1474,6 @@ exports.getMyActiveChallenge = async (req, res) => {
                 totalDaysFilled: 0,
             },
             standings,
-            todayBoard,
-            allMyDays,
             timeLeftMs,
             currentDay,
             totalDays: challenge.durationDays,
