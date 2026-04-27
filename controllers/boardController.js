@@ -9,6 +9,8 @@ const Badges = require("../models/Badges");
 const ChallengeParticipant = require("../models/ChallengeParticipant");
 const Challenge = require("../models/Challenges");
 
+const isDuplicateKeyError = (error) => error && error.code === 11000;
+
 // ─── Constants ───
 const LIFE_REGAINED_PER_CIGARETTE = 11; // minutes of life regained per cigarette avoided
 
@@ -133,13 +135,21 @@ const ensureTodayBoard = async (userId) => {
         const dayNumber = existingBoardsCount + 1;
         const smokes = new Array(cigarettesPerDay).fill(null);
 
-        dailyBoard = await DailyBoard.create({
-            userId,
-            challengeId: null,
-            day: dayNumber,
-            date: today,
-            smokes,
-        });
+        try {
+            dailyBoard = await DailyBoard.create({
+                userId,
+                challengeId: null,
+                day: dayNumber,
+                date: today,
+                smokes,
+            });
+        } catch (error) {
+            if (!isDuplicateKeyError(error)) throw error;
+
+            // Concurrent request may have created today's board first.
+            dailyBoard = await DailyBoard.findOne({ userId, challengeId: null, date: today });
+            if (!dailyBoard) throw error;
+        }
 
         // Ensure monthly board exists and link this daily board
         const month = today.getUTCMonth() + 1;
@@ -156,7 +166,12 @@ const ensureTodayBoard = async (userId) => {
                 dailyBoards: [dailyBoard._id],
             });
         } else {
-            monthlyBoard.dailyBoards.push(dailyBoard._id);
+            const alreadyLinked = monthlyBoard.dailyBoards.some(
+                (id) => id.toString() === dailyBoard._id.toString()
+            );
+            if (!alreadyLinked) {
+                monthlyBoard.dailyBoards.push(dailyBoard._id);
+            }
             await monthlyBoard.save();
         }
     }
@@ -216,13 +231,24 @@ exports.getTodayBoard = async (req, res) => {
                         userId 
                     });
                     const cigarettesPerDay = (user && user.cigarettes_per_day > 0) ? user.cigarettes_per_day : 1;
-                    challengeBoard = await DailyBoard.create({
-                        challengeId: activeChallenge._id,
-                        userId,
-                        day: existingCount + 1,
-                        date: todayUTC,
-                        smokes: new Array(cigarettesPerDay).fill(null),
-                    });
+                    try {
+                        challengeBoard = await DailyBoard.create({
+                            challengeId: activeChallenge._id,
+                            userId,
+                            day: existingCount + 1,
+                            date: todayUTC,
+                            smokes: new Array(cigarettesPerDay).fill(null),
+                        });
+                    } catch (error) {
+                        if (!isDuplicateKeyError(error)) throw error;
+
+                        challengeBoard = await DailyBoard.findOne({
+                            challengeId: activeChallenge._id,
+                            userId,
+                            date: todayUTC,
+                        });
+                        if (!challengeBoard) throw error;
+                    }
                 }
             }
         }

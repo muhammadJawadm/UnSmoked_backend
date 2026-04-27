@@ -25,6 +25,7 @@ const competitionRoutes = require("./routes/competitionRoutes");
 const badgeRoutes = require("./routes/badgeRoutes");
 const postHideRoutes = require("./routes/postHideRoutes");
 const postReportRoutes = require("./routes/postReportRoutes");
+const DailyBoard = require("./models/DailyBoard");
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -58,7 +59,13 @@ app.use("/post-hides", postHideRoutes);
 app.use("/post-reports", postReportRoutes);
 
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log("Connected to MongoDB successfully"))
+    .then(async () => {
+        console.log("Connected to MongoDB successfully");
+
+        // Keep DailyBoard indexes aligned with schema to avoid stale unique-index conflicts.
+        await DailyBoard.syncIndexes();
+        console.log("DailyBoard indexes synced");
+    })
     .catch((error) => console.log(error));
 
 app.get("/", (req, res) => {
