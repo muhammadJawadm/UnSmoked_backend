@@ -6,6 +6,12 @@ const mongoose = require("mongoose");
 // Helper: check if a value is a valid MongoDB ObjectId
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 
+// API-facing notification status
+const getNotificationDataStatus = (data = {}, dbStatus = null) => {
+    const type = typeof data.type === "string" ? data.type.toLowerCase() : "";
+    return type.includes("invite") ? "invite" : dbStatus;
+};
+
 // Unified send notification function - handles single user, specific users, and broadcast
 exports.sendNotification = async (req, res) => {
     try {
@@ -226,6 +232,20 @@ exports.getNotifications = async (req, res) => {
 
         const totalPages = Math.ceil(totalItems / pageSize);
 
+        const formattedResults = results.map((notification) => {
+            const item = notification.toObject();
+
+            item.data = {
+                ...(item.data || {}),
+                status: getNotificationDataStatus(item.data, item.status || null),
+            };
+
+            // Hide delivery status from this API response; category status is returned in data.status.
+            delete item.status;
+
+            return item;
+        });
+
         res.status(200).json({
             success: true,
             pagination: {
@@ -233,8 +253,8 @@ exports.getNotifications = async (req, res) => {
                 totalPages,
                 totalItems,
                 pageSize,
-                itemsCount: results.length,
-                results,
+                itemsCount: formattedResults.length,
+                results: formattedResults,
             }
         });
     } catch (error) {

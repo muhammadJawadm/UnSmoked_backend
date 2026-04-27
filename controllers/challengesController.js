@@ -280,14 +280,10 @@ exports.createChallenge = async (req, res) => {
             };
         }
 
-        // ── Open challenges are immediately active ─────────────────────────
+        // ── Open challenges wait until first player joins ──────────────────
         if (mode === "open") {
             challengeData.inviteToken = generateInviteToken();
-            challengeData.status = "active";
-            challengeData.startAt = new Date();
-            challengeData.endsAt = new Date(
-                Date.now() + challengeData.durationDays * 24 * 60 * 60 * 1000
-            );
+            challengeData.status = "waiting";
         }
         // ── 1v1 / 4-player challenges start as "pending" (no invites yet) ───
         // The model default is already "pending"; this is just a comment marker.
@@ -311,7 +307,7 @@ exports.createChallenge = async (req, res) => {
             success: true,
             message:
                 mode === "open"
-                    ? "Open challenge created and is now active"
+                    ? "Open challenge created. It will start when the first player joins"
                     : "Challenge created. Invite players to move it to 'waiting'",
             challenge: populated,
         });
@@ -1319,13 +1315,13 @@ exports.discoverChallenges = async (req, res) => {
             }
         }
 
-        // ── Open challenges: active, open-mode, only creator has joined so far ─
+        // ── Open challenges: waiting, open-mode, only creator has joined so far ─
         // "No one joined" means: the only accepted participant is the creator
         // (participantCount === 1). We exclude challenges the requesting user
         // has already joined so they don't appear as joinable to themselves.
         const openChallengeFilter = {
             mode: "open",
-            status: "active",
+            status: "waiting",
             moderationStatus: "ok",
             createdBy: { $ne: userId },   // don't show own challenges here
         };
@@ -1384,6 +1380,120 @@ exports.discoverChallenges = async (req, res) => {
                 itemsCount: results.length,
                 results,
             },
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ─── 15b. Join Open Challenge ─────────────────────────────────────────────
+// POST /challenges/:id/join
+exports.joinOpenChallenge = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+
+        let challenge = await Challenge.findById(id)
+            .populate("createdBy", "name profile_picture")
+            .populate("category", "name")
+            .populate("winner", "name profile_picture");
+
+        if (!challenge || challenge.moderationStatus === "removed") {
+            return res.status(404).json({ success: false, message: "Challenge not found" });
+        }
+        if (challenge.mode !== "open") {
+            return res.status(400).json({ success: false, message: "Only open challenges can be joined" });
+        }
+        if (["completed", "cancelled"].includes(challenge.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot join a challenge with status '${challenge.status}'`,
+            });
+        }
+        if (challenge.createdBy?._id?.toString() === userId) {
+            return res.status(400).json({ success: false, message: "You are already the creator of this challenge" });
+        }
+
+        const existingParticipant = await ChallengeParticipant.findOne({
+            challengeId: id,
+            userId,
+            inviteStatus: "accepted",
+        });
+
+        if (existingParticipant) {
+            return res.status(200).json({
+                success: true,
+                message: "You have already joined this challenge",
+                challenge,
+                participant: existingParticipant,
+                challengeActivated: challenge.status === "active",
+            });
+        }
+
+        const existingActive = await hasActiveChallenge(userId);
+        if (existingActive) {
+            return res.status(400).json({
+                success: false,
+                message: `You already have an active challenge ("${existingActive.title}"). You cannot join another until it ends.`,
+                activeChallengeId: existingActive._id,
+            });
+        }
+
+        const participant = await ChallengeParticipant.findOneAndUpdate(
+            { challengeId: id, userId },
+            {
+                $set: {
+                    role: "invitee",
+                    inviteStatus: "accepted",
+                    respondedAt: new Date(),
+                },
+                $setOnInsert: {
+                    challengeId: id,
+                    userId,
+                },
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
+        let challengeActivated = false;
+
+        if (challenge.status !== "active") {
+            challenge.status = "active";
+            challenge.startAt = new Date();
+            challenge.endsAt = new Date(
+                Date.now() + challenge.durationDays * 24 * 60 * 60 * 1000
+            );
+            await challenge.save();
+
+            await createChallengeBoardsForParticipants(challenge);
+            challengeActivated = true;
+
+            const accepted = await ChallengeParticipant.find({
+                challengeId: id,
+                inviteStatus: "accepted",
+            }).select("userId");
+
+            await sendNotificationToUsers(
+                accepted.map((p) => p.userId.toString()),
+                "Challenge Started! 🚀",
+                `${challenge.title} is now active. Give it your best!`,
+                { type: "challenge_started", challengeId: challenge._id.toString() }
+            );
+
+            challenge = await Challenge.findById(id)
+                .populate("createdBy", "name profile_picture")
+                .populate("category", "name")
+                .populate("winner", "name profile_picture");
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: challengeActivated
+                ? "Joined successfully. Challenge is now active"
+                : "Joined successfully",
+            challenge,
+            participant,
+            challengeActivated,
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
