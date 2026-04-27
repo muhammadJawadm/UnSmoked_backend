@@ -212,25 +212,29 @@ exports.sendNotification = async (req, res) => {
 exports.getNotifications = async (req, res) => {
     try {
         const userId = req.user.id; // Using consistent field name from JWT
-        const { limit = 20, page = 1 } = req.query;
+        const currentPage = Math.max(parseInt(req.query.page) || 1, 1);
+        const pageSize = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
+        const skip = (currentPage - 1) * pageSize;
 
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const [results, totalItems] = await Promise.all([
+            Notification.find({ userId })
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(pageSize),
+            Notification.countDocuments({ userId })
+        ]);
 
-        const notifications = await Notification.find({ userId })
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(parseInt(limit));
-
-        const total = await Notification.countDocuments({ userId });
+        const totalPages = Math.ceil(totalItems / pageSize);
 
         res.status(200).json({
             success: true,
-            notifications,
             pagination: {
-                total,
-                page: parseInt(page),
-                limit: parseInt(limit),
-                pages: Math.ceil(total / parseInt(limit))
+                currentPage,
+                totalPages,
+                totalItems,
+                pageSize,
+                itemsCount: results.length,
+                results,
             }
         });
     } catch (error) {

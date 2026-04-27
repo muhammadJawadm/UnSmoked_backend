@@ -1280,14 +1280,19 @@ exports.completeChallenge = async (req, res) => {
 };
 
 // ─── 15. Discover Preset Challenges — S4 ──────────────────────────────────
-// GET /challenges/discover?category=Health
+// GET /challenges/discover?category=Health&search=run&page=1&limit=20
 exports.discoverChallenges = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { category } = req.query;
-        const categoryQuery = typeof category === "string" ? category.trim() : "";
+        const { category, search } = req.query;
+        const currentPage = Math.max(parseInt(req.query.page) || 1, 1);
+        const pageSize = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
+        const skip = (currentPage - 1) * pageSize;
 
-        // ── Resolve category filter (shared for both templates & open challenges) ─
+        const categoryQuery = typeof category === "string" ? category.trim() : "";
+        const searchQuery = typeof search === "string" ? search.trim() : "";
+
+        // ── Resolve category filter ─────────────────────────────────────────
         let resolvedCategoryId = null;
         if (categoryQuery && categoryQuery.toLowerCase() !== "all") {
             if (mongoose.Types.ObjectId.isValid(categoryQuery)) {
@@ -1314,14 +1319,6 @@ exports.discoverChallenges = async (req, res) => {
             }
         }
 
-        // ── Templates (preset blueprints) ────────────────────────────────────
-        const templateFilter = { isActive: true, isCustom: false };
-        if (resolvedCategoryId) templateFilter.category = resolvedCategoryId;
-
-        const templates = await Template.find(templateFilter)
-            .populate("category", "name")
-            .sort({ createdAt: -1 });
-
         // ── Open challenges: active, open-mode, only creator has joined so far ─
         // "No one joined" means: the only accepted participant is the creator
         // (participantCount === 1). We exclude challenges the requesting user
@@ -1333,6 +1330,9 @@ exports.discoverChallenges = async (req, res) => {
             createdBy: { $ne: userId },   // don't show own challenges here
         };
         if (resolvedCategoryId) openChallengeFilter.category = resolvedCategoryId;
+        if (searchQuery) {
+            openChallengeFilter.title = { $regex: escapeRegex(searchQuery), $options: "i" };
+        }
 
         const candidateOpenChallenges = await Challenge.find(openChallengeFilter)
             .populate("createdBy", "name profile_picture")
@@ -1370,14 +1370,20 @@ exports.discoverChallenges = async (req, res) => {
             (ch) => !ch.alreadyJoined
         );
 
-        // ── Categories (for filter tabs on the UI) ───────────────────────────
-        const categories = await Category.find().select("name").sort({ name: 1 });
+        const totalItems = joinableOpenChallenges.length;
+        const totalPages = Math.ceil(totalItems / pageSize) || 1;
+        const results = joinableOpenChallenges.slice(skip, skip + pageSize);
 
         res.status(200).json({
             success: true,
-            templates,
-            openChallenges: joinableOpenChallenges,
-            categories: ["All", ...categories.map((c) => c.name)],
+            pagination: {
+                currentPage,
+                totalPages,
+                totalItems,
+                pageSize,
+                itemsCount: results.length,
+                results,
+            },
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
