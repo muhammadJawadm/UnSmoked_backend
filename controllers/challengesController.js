@@ -11,6 +11,8 @@ const { addXP } = require("../utils/xpSystem");
 const { checkAndAssignBadge } = require("../services/badgeService");
 const sendNotificationToUsers = require("../utils/sendNotification");
 
+const TEST_CHALLENGE_DURATION_MS = 10 * 60 * 1000;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const generateInviteToken = () => crypto.randomBytes(20).toString("hex");
@@ -115,7 +117,7 @@ const tryAutoActivate = async (challenge) => {
 
     challenge.status = "active";
     challenge.startAt = new Date();
-    challenge.endsAt = new Date(Date.now() + challenge.durationDays * 24 * 60 * 60 * 1000);
+    challenge.endsAt = new Date(Date.now() + TEST_CHALLENGE_DURATION_MS);
     await challenge.save();
 
     // Auto-create day-1 challenge boards for all accepted participants
@@ -816,9 +818,7 @@ exports.startChallenge = async (req, res) => {
 
         challenge.status = "active";
         challenge.startAt = new Date();
-        challenge.endsAt = new Date(
-            Date.now() + challenge.durationDays * 24 * 60 * 60 * 1000
-        );
+        challenge.endsAt = new Date(Date.now() + TEST_CHALLENGE_DURATION_MS);
         await challenge.save();
 
         // Create day-1 challenge boards for all accepted participants
@@ -900,7 +900,7 @@ exports.cancelChallenge = async (req, res) => {
 };
 
 // ─── 11. My Challenges Hub — S1 (Ongoing / Created / Completed) ───────────
-// GET /challenges/my?page=1&limit=10&status=all|ongoing|created|completed|pending|waiting|cancelled
+// GET /challenges/my?page=1&limit=10&status=all|ongoing|created|joined|completed|pending|waiting|cancelled
 exports.getMyChallenges = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -910,7 +910,7 @@ exports.getMyChallenges = async (req, res) => {
         const skip        = (currentPage - 1) * pageSize;
 
         // Allowed status values (default → "all")
-        const VALID_STATUSES = ["all", "ongoing", "created", "completed", "pending", "waiting", "cancelled"];
+        const VALID_STATUSES = ["all", "ongoing", "created", "joined", "completed", "pending", "waiting", "cancelled"];
         const status = VALID_STATUSES.includes(req.query.status) ? req.query.status : "all";
 
         // Find all challenge IDs where I'm an accepted participant
@@ -940,6 +940,14 @@ exports.getMyChallenges = async (req, res) => {
                 status: { $in: ["pending", "waiting", "active"] },
                 moderationStatus: "ok",
             }).populate(populateOpts).sort({ createdAt: -1 });
+
+        const fetchJoined = () =>
+            Challenge.find({
+                _id: { $in: myChallengeIds },
+                createdBy: { $ne: userId },
+                status: { $in: ["waiting", "active"] },
+                moderationStatus: "ok",
+            }).populate(populateOpts).sort({ updatedAt: -1 });
 
         const fetchCompleted = () =>
             Challenge.find({
@@ -976,6 +984,7 @@ exports.getMyChallenges = async (req, res) => {
         const [
             ongoingCount,
             createdCount,
+            joinedCount,
             completedCount,
             pendingCount,
             waitingCount,
@@ -983,6 +992,7 @@ exports.getMyChallenges = async (req, res) => {
         ] = await Promise.all([
             Challenge.countDocuments({ _id: { $in: myChallengeIds }, status: "active",    moderationStatus: "ok" }),
             Challenge.countDocuments({ createdBy: userId, status: { $in: ["pending", "waiting", "active"] }, moderationStatus: "ok" }),
+            Challenge.countDocuments({ _id: { $in: myChallengeIds }, createdBy: { $ne: userId }, status: { $in: ["waiting", "active"] }, moderationStatus: "ok" }),
             Challenge.countDocuments({ _id: { $in: myChallengeIds }, status: "completed", moderationStatus: "ok" }),
             Challenge.countDocuments({ createdBy: userId, status: "pending",   moderationStatus: "ok" }),
             Challenge.countDocuments({ createdBy: userId, status: "waiting",   moderationStatus: "ok" }),
@@ -1002,6 +1012,9 @@ exports.getMyChallenges = async (req, res) => {
                 break;
             case "created":
                 resultList = await fetchCreated();
+                break;
+            case "joined":
+                resultList = await fetchJoined();
                 break;
             case "completed":
                 resultList = await fetchCompleted();
@@ -1047,6 +1060,7 @@ exports.getMyChallenges = async (req, res) => {
                 all:       ongoingCount + createdCount + completedCount,
                 ongoing:   ongoingCount,
                 created:   createdCount,
+                joined:    joinedCount,
                 completed: completedCount,
                 pending:   pendingCount,
                 waiting:   waitingCount,
@@ -1460,9 +1474,7 @@ exports.joinOpenChallenge = async (req, res) => {
         if (challenge.status !== "active") {
             challenge.status = "active";
             challenge.startAt = new Date();
-            challenge.endsAt = new Date(
-                Date.now() + challenge.durationDays * 24 * 60 * 60 * 1000
-            );
+            challenge.endsAt = new Date(Date.now() + TEST_CHALLENGE_DURATION_MS);
             await challenge.save();
 
             await createChallengeBoardsForParticipants(challenge);
