@@ -7,10 +7,9 @@ const sendNotificationToUsers = require("../utils/sendNotification");
 
 exports.createTask = async (req, res) => {
     try {
-        const { title, description, xps_points, is_custom, categoryId } = req.body;
+        const { title, description, xps_points, is_custom } = req.body;
         const userId = req.user.id;
         const task = await Task.create({
-            categoryId,
             title,
             description,
             xps_points,
@@ -25,11 +24,32 @@ exports.createTask = async (req, res) => {
 
 exports.getAllTasks = async (req, res) => {
     try {
-        const tasks = await Task.find()
-            .populate("userId", "name profile_picture")
-            .populate("categoryId", "name")
-            .sort({ createdAt: -1 });
-        res.status(200).json({ success: true, tasks });
+        const currentPage = Math.max(parseInt(req.query.page) || 1, 1);
+        const pageSize = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
+        const skip = (currentPage - 1) * pageSize;
+
+        const [results, totalItems] = await Promise.all([
+            Task.find()
+                .populate("userId", "name profile_picture")
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(pageSize),
+            Task.countDocuments()
+        ]);
+
+        const totalPages = Math.ceil(totalItems / pageSize);
+
+        res.status(200).json({
+            success: true,
+            pagination: {
+                currentPage,
+                totalPages,
+                totalItems,
+                pageSize,
+                itemsCount: results.length,
+                results,
+            }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -38,8 +58,7 @@ exports.getAllTasks = async (req, res) => {
 exports.getTaskById = async (req, res) => {
     try {
         const task = await Task.findById(req.params.id)
-            .populate("userId", "name profile_picture")
-            .populate("categoryId", "name");
+            .populate("userId", "name profile_picture");
         if (!task) {
             return res.status(404).json({ success: false, message: "Task not found" });
         }
@@ -51,7 +70,7 @@ exports.getTaskById = async (req, res) => {
 
 exports.updateTask = async (req, res) => {
     try {
-        const { title, description, xps_points, is_custom, categoryId } = req.body;
+        const { title, description, xps_points, is_custom } = req.body;
         const userId = req.user.id;
 
         // First, check if task exists and verify ownership
@@ -66,9 +85,9 @@ exports.updateTask = async (req, res) => {
         // Now perform the update
         const task = await Task.findByIdAndUpdate(
             req.params.id,
-            { title, description, xps_points, is_custom, categoryId },
+            { title, description, xps_points, is_custom },
             { new: true }
-        ).populate("categoryId", "name");
+        );
 
         res.status(200).json({ success: true, message: "Task updated successfully", task });
     } catch (error) {
