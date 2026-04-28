@@ -3,8 +3,10 @@ const mongoose = require("mongoose");
 const userSchema = new mongoose.Schema({
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
-    phone: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
+    phone: { type: String, required: false, unique: true, sparse: true },
+    password: { type: String, required: false },
+    googleId: { type: String, unique: true, sparse: true },
+    authProvider: { type: String, enum: ["local", "google"], default: "local" },
     profile_picture: { type: String },
     role: { type: String, enum: ["user", "admin"], default: "user" },
     is_verified: { type: Boolean, default: false },

@@ -7,6 +7,9 @@ const generateToken = require("../utils/jwt");
 const UserProgress = require("../models/UserProgress");
 const { calculateLevel } = require("../utils/xpSystem");
 const { getUserOverview } = require("../utils/overviewSystem");
+const { OAuth2Client } = require("google-auth-library");
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Initialize SendGrid
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
@@ -284,6 +287,13 @@ exports.loginUser = async (req, res) => {
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
+        if (!user.password) {
+            return res.status(400).json({
+                success: false,
+                message: "This account uses Google sign-in. Please continue with Google.",
+            });
+        }
+
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
             return res.status(401).json({ success: false, message: "Invalid credentials" });
@@ -308,6 +318,92 @@ exports.loginUser = async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ success: false, message: "Internal server error" });
+    }
+};
+
+exports.googleLogin = async (req, res) => {
+    const { idToken } = req.body;
+
+    try {
+        if (!process.env.GOOGLE_CLIENT_ID) {
+            return res.status(500).json({
+                success: false,
+                message: "Google sign-in is not configured",
+            });
+        }
+
+        if (!idToken) {
+            return res.status(400).json({ success: false, message: "Google token is required" });
+        }
+
+        const ticket = await googleClient.verifyIdToken({
+            idToken,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+
+        const payload = ticket.getPayload();
+        if (!payload?.email) {
+            return res.status(400).json({ success: false, message: "Google account email is missing" });
+        }
+
+        const email = payload.email.trim().toLowerCase();
+        const googleId = payload.sub;
+        const name = payload.name || payload.given_name || email.split("@")[0];
+        const profilePicture = payload.picture || "";
+
+        let user = await User.findOne({ $or: [{ googleId }, { email }] });
+
+        if (user) {
+            if (!user.googleId) {
+                user.googleId = googleId;
+            }
+
+            if (!user.authProvider) {
+                user.authProvider = "google";
+            }
+
+            if (!user.name && name) {
+                user.name = name;
+            }
+
+            if (!user.profile_picture && profilePicture) {
+                user.profile_picture = profilePicture;
+            }
+
+            user.is_verified = true;
+            await user.save();
+        } else {
+            user = new User({
+                name,
+                email,
+                googleId,
+                authProvider: "google",
+                profile_picture: profilePicture,
+                is_verified: true,
+            });
+
+            await user.save();
+        }
+
+        const token = generateToken(user._id);
+
+        res.status(200).json({
+            success: true,
+            message: "Google sign-in successful",
+            token,
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                phone: user.phone,
+                profile_picture: user.profile_picture,
+                is_verified: user.is_verified,
+                authProvider: user.authProvider,
+            },
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Google sign-in failed" });
     }
 };
 

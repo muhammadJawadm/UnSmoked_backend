@@ -14,7 +14,8 @@ const {
     deleteUser,
     loginUser,
     changePassword,
-    getAllUsers
+    getAllUsers,
+    googleLogin
 } = require("../controllers/authController");
 
 const verifyToken = require("../middleware/verifyToken");
@@ -23,6 +24,7 @@ router.post("/register", registerUser);
 router.post("/verify-otp", verifyOtp);
 router.post("/resend-otp", resendOtp);
 router.post("/login", loginUser);
+router.post("/google", googleLogin);
 
 // Forgot password routes
 router.post("/forgot-password", forgotPassword);
