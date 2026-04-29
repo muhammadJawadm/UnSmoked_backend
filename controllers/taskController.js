@@ -242,6 +242,7 @@ exports.assignChallengeTask = async (req, res) => {
         const insertedIds = assignments.map(a => a._id);
         const savedAssignments = await ChallengeTaskAssignment.find({ _id: { $in: insertedIds } })
             .populate('assignedBy', 'name profile_picture')
+            .populate('taskId', 'title description xps_points')
             .lean();
 
         // Format assignments according to requirements:
@@ -259,7 +260,12 @@ exports.assignChallengeTask = async (req, res) => {
                     profile_picture: a.assignedBy.profile_picture || null,
                 } : { _id: assignedBy },
                 assignedTo: a.assignedTo ? a.assignedTo.toString() : null,
-                taskId: a.taskId ? a.taskId.toString() : null,
+                taskId: a.taskId ? (typeof a.taskId === 'object' ? {
+                    _id: a.taskId._id ? a.taskId._id.toString() : null,
+                    title: a.taskId.title || null,
+                    description: a.taskId.description || null,
+                    xps_points: a.taskId.xps_points || null,
+                } : a.taskId.toString()) : null,
                 note: a.note || "",
                 status: a.status || "pending",
                 createdAt: a.createdAt,
@@ -268,7 +274,13 @@ exports.assignChallengeTask = async (req, res) => {
 
             // Only include customTask when this assignment was created with a custom task
             if (!a.taskId) {
-                item.customTask = (a.customTask && Object.keys(a.customTask).length) ? a.customTask : null;
+                const ct = a.customTask;
+                const hasCustomValues = ct && (
+                    (ct.title && String(ct.title).trim() !== '') ||
+                    (ct.description && String(ct.description).trim() !== '') ||
+                    (typeof ct.xps_points === 'number' && ct.xps_points > 0)
+                );
+                item.customTask = hasCustomValues ? ct : null;
             }
 
             return item;
@@ -306,11 +318,46 @@ exports.getMyAssignedTasks = async (req, res) => {
         if (challengeId) filter.challengeId = challengeId;
         if (status && ["pending", "completed"].includes(status)) filter.status = status;
 
-        const assignments = await ChallengeTaskAssignment.find(filter)
-            .populate("challengeId", "title status")
-            .populate("assignedBy", "name profile_picture")
-            .populate("taskId", "title description xps_points")
-            .sort({ createdAt: -1 });
+        const assignmentsRaw = await ChallengeTaskAssignment.find(filter)
+            .populate('assignedBy', 'name profile_picture')
+            .populate('taskId', 'title description xps_points')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const assignments = assignmentsRaw.map(a => {
+            const item = {
+                _id: a._id,
+                challengeId: a.challengeId ? a.challengeId.toString() : null,
+                assignedBy: a.assignedBy ? {
+                    _id: a.assignedBy._id ? a.assignedBy._id.toString() : null,
+                    name: a.assignedBy.name || null,
+                    profile_picture: a.assignedBy.profile_picture || null,
+                } : null,
+                assignedTo: a.assignedTo ? a.assignedTo.toString() : null,
+                taskId: a.taskId ? (typeof a.taskId === 'object' ? {
+                    _id: a.taskId._id ? a.taskId._id.toString() : null,
+                    title: a.taskId.title || null,
+                    description: a.taskId.description || null,
+                    xps_points: a.taskId.xps_points || null,
+                } : a.taskId.toString()) : null,
+                note: a.note || "",
+                status: a.status || "pending",
+                createdAt: a.createdAt,
+                updatedAt: a.updatedAt,
+            };
+
+            if (!a.taskId) {
+                const ct = a.customTask;
+                const hasCustomValues = ct && (
+                    (ct.title && String(ct.title).trim() !== '') ||
+                    (ct.description && String(ct.description).trim() !== '') ||
+                    (typeof ct.xps_points === 'number' && ct.xps_points > 0)
+                );
+                item.customTask = hasCustomValues ? ct : null;
+            }
+
+            return item;
+        });
 
         res.status(200).json({ success: true, count: assignments.length, assignments });
     } catch (error) {
@@ -331,11 +378,46 @@ exports.getTasksIAssigned = async (req, res) => {
         if (challengeId) filter.challengeId = challengeId;
         if (status && ["pending", "completed"].includes(status)) filter.status = status;
 
-        const assignments = await ChallengeTaskAssignment.find(filter)
-            .populate("challengeId", "title status")
-            .populate("assignedTo", "name profile_picture")
-            .populate("taskId", "title description xps_points")
-            .sort({ createdAt: -1 });
+        const assignmentsRaw = await ChallengeTaskAssignment.find(filter)
+            .populate('assignedBy', 'name profile_picture')
+            .populate('taskId', 'title description xps_points')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const assignments = assignmentsRaw.map(a => {
+            const item = {
+                _id: a._id,
+                challengeId: a.challengeId ? a.challengeId.toString() : null,
+                assignedBy: a.assignedBy ? {
+                    _id: a.assignedBy._id ? a.assignedBy._id.toString() : null,
+                    name: a.assignedBy.name || null,
+                    profile_picture: a.assignedBy.profile_picture || null,
+                } : null,
+                assignedTo: a.assignedTo ? a.assignedTo.toString() : null,
+                taskId: a.taskId ? (typeof a.taskId === 'object' ? {
+                    _id: a.taskId._id ? a.taskId._id.toString() : null,
+                    title: a.taskId.title || null,
+                    description: a.taskId.description || null,
+                    xps_points: a.taskId.xps_points || null,
+                } : a.taskId.toString()) : null,
+                note: a.note || "",
+                status: a.status || "pending",
+                createdAt: a.createdAt,
+                updatedAt: a.updatedAt,
+            };
+
+            if (!a.taskId) {
+                const ct = a.customTask;
+                const hasCustomValues = ct && (
+                    (ct.title && String(ct.title).trim() !== '') ||
+                    (ct.description && String(ct.description).trim() !== '') ||
+                    (typeof ct.xps_points === 'number' && ct.xps_points > 0)
+                );
+                item.customTask = hasCustomValues ? ct : null;
+            }
+
+            return item;
+        });
 
         res.status(200).json({ success: true, count: assignments.length, assignments });
     } catch (error) {
