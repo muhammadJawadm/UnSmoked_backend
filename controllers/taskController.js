@@ -145,8 +145,8 @@ exports.assignChallengeTask = async (req, res) => {
         if (!challengeId) {
             return res.status(400).json({ success: false, message: "challengeId is required" });
         }
-        if (!assignedTo) {
-            return res.status(400).json({ success: false, message: "assignedTo (loser userId) is required" });
+        if (!Array.isArray(assignedTo) || assignedTo.length === 0) {
+            return res.status(400).json({ success: false, message: "assignedTo (array of loser userIds) is required and must not be empty" });
         }
         if (!Array.isArray(tasks) || tasks.length === 0) {
             return res.status(400).json({ success: false, message: "tasks must be a non-empty array" });
@@ -173,23 +173,25 @@ exports.assignChallengeTask = async (req, res) => {
             });
         }
 
-        // ── Verify assignedTo was a participant of this challenge ────────
-        const loserParticipant = await ChallengeParticipant.findOne({
-            challengeId,
-            userId: assignedTo,
-            inviteStatus: "accepted",
-        });
-        if (!loserParticipant) {
-            return res.status(404).json({
-                success: false,
-                message: "The specified user was not an accepted participant of this challenge",
+        // ── Verify all assignedTo users were participants of this challenge ────────
+        for (const loserId of assignedTo) {
+            if (loserId === assignedBy) {
+                return res.status(400).json({
+                    success: false,
+                    message: "You cannot assign a task to yourself",
+                });
+            }
+            const loserParticipant = await ChallengeParticipant.findOne({
+                challengeId,
+                userId: loserId,
+                inviteStatus: "accepted",
             });
-        }
-        if (assignedTo === assignedBy) {
-            return res.status(400).json({
-                success: false,
-                message: "You cannot assign a task to yourself",
-            });
+            if (!loserParticipant) {
+                return res.status(404).json({
+                    success: false,
+                    message: `The specified user (${loserId}) was not an accepted participant of this challenge`,
+                });
+            }
         }
 
         // ── Validate each task entry ───────────────────────────────
@@ -215,29 +217,34 @@ exports.assignChallengeTask = async (req, res) => {
         }
 
         // ── Create assignments ─────────────────────────────────────────
-        const assignments = await ChallengeTaskAssignment.insertMany(
-            tasks.map((t) => ({
-                challengeId,
-                assignedBy,
-                assignedTo,
-                taskId:     t.taskId    || null,
-                customTask: t.customTask || {},
-                note:       note || "",
-            }))
-        );
+        const assignmentDocs = [];
+        for (const loserId of assignedTo) {
+            for (const t of tasks) {
+                assignmentDocs.push({
+                    challengeId,
+                    assignedBy,
+                    assignedTo: loserId,
+                    taskId:     t.taskId    || null,
+                    customTask: t.customTask || {},
+                    note:       note || "",
+                });
+            }
+        }
+        
+        const assignments = await ChallengeTaskAssignment.insertMany(assignmentDocs);
 
-        // ── Notify the loser ───────────────────────────────────────
+        // ── Notify the losers ───────────────────────────────────────
         const winner = await User.findById(assignedBy).select("name");
         await sendNotificationToUsers(
-            [assignedTo],
+            assignedTo,
             "New Task Assigned! 📋",
-            `${winner?.name || "The winner"} assigned you ${assignments.length} task(s) from the challenge "${challenge.title}"`,
+            `${winner?.name || "The winner"} assigned you task(s) from the challenge "${challenge.title}"`,
             { type: "challenge_task_assigned", challengeId: challengeId.toString() }
         );
 
         res.status(201).json({
             success: true,
-            message: `${assignments.length} task(s) assigned successfully`,
+            message: `${assignments.length} task(s) assigned successfully to ${assignedTo.length} user(s)`,
             assignments,
         });
     } catch (error) {
