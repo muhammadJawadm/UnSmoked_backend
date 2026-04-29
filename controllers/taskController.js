@@ -220,21 +220,62 @@ exports.assignChallengeTask = async (req, res) => {
         const assignmentDocs = [];
         for (const loserId of assignedTo) {
             for (const t of tasks) {
-                assignmentDocs.push({
+                const doc = {
                     challengeId,
                     assignedBy,
                     assignedTo: loserId,
-                    taskId:     t.taskId    || null,
-                    customTask: t.customTask || {},
-                    note:       note || "",
-                });
+                    note: note || "",
+                };
+                if (t.taskId) {
+                    doc.taskId = t.taskId;
+                } else {
+                    doc.taskId = null;
+                    doc.customTask = t.customTask || {};
+                }
+                assignmentDocs.push(doc);
             }
         }
         
         const assignments = await ChallengeTaskAssignment.insertMany(assignmentDocs);
 
+        // Re-query inserted assignments to control the response shape
+        const insertedIds = assignments.map(a => a._id);
+        const savedAssignments = await ChallengeTaskAssignment.find({ _id: { $in: insertedIds } })
+            .populate('assignedBy', 'name profile_picture')
+            .lean();
+
+        // Format assignments according to requirements:
+        // - if taskId is provided, return customTask as null
+        // - assignedBy should include name and profile_picture
+        // - challengeId should be returned as the id only (no populated title/status)
+        // - assignedTo should be returned as the user id only
+        const formattedAssignments = savedAssignments.map(a => {
+            const item = {
+                _id: a._id,
+                challengeId: a.challengeId ? a.challengeId.toString() : null,
+                assignedBy: a.assignedBy ? {
+                    _id: a.assignedBy._id ? a.assignedBy._id.toString() : null,
+                    name: a.assignedBy.name || null,
+                    profile_picture: a.assignedBy.profile_picture || null,
+                } : { _id: assignedBy },
+                assignedTo: a.assignedTo ? a.assignedTo.toString() : null,
+                taskId: a.taskId ? a.taskId.toString() : null,
+                note: a.note || "",
+                status: a.status || "pending",
+                createdAt: a.createdAt,
+                updatedAt: a.updatedAt,
+            };
+
+            // Only include customTask when this assignment was created with a custom task
+            if (!a.taskId) {
+                item.customTask = (a.customTask && Object.keys(a.customTask).length) ? a.customTask : null;
+            }
+
+            return item;
+        });
+
         // ── Notify the losers ───────────────────────────────────────
-        const winner = await User.findById(assignedBy).select("name");
+        const winner = await User.findById(assignedBy).select("name profile_picture");
         await sendNotificationToUsers(
             assignedTo,
             "New Task Assigned! 📋",
@@ -244,8 +285,8 @@ exports.assignChallengeTask = async (req, res) => {
 
         res.status(201).json({
             success: true,
-            message: `${assignments.length} task(s) assigned successfully to ${assignedTo.length} user(s)`,
-            assignments,
+            message: `${formattedAssignments.length} task(s) assigned successfully to ${assignedTo.length} user(s)`,
+            assignments: formattedAssignments,
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
