@@ -113,3 +113,36 @@ exports.getUserAchievedMilestones = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+exports.createUserMilestone = async (req, res) => {
+    try {
+        const { milestoneId } = req.body;
+        const userId = req.user.id;
+
+        if (!milestoneId) {
+            return res.status(400).json({ success: false, message: "Milestone ID is required" });
+        }
+
+        // Check if milestone exists
+        const milestone = await Milestone.findById(milestoneId);
+        if (!milestone) {
+            return res.status(404).json({ success: false, message: "Milestone not found" });
+        }
+
+        // Check if already achieved
+        const existingUserMilestone = await UserMilestone.findOne({ userId, milestoneId });
+        if (existingUserMilestone) {
+            return res.status(400).json({ success: false, message: "Milestone already achieved by user" });
+        }
+
+        const userMilestone = await UserMilestone.create({ userId, milestoneId });
+        
+        res.status(201).json({ 
+            success: true, 
+            message: "User milestone created successfully", 
+            userMilestone 
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
