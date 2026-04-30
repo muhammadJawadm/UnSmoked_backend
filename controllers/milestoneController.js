@@ -1,4 +1,5 @@
 const Milestone = require("../models/Milestones");
+const UserMilestone = require("../models/UserMilestone");
 
 exports.createMilestone = async (req, res) => {
     try {
@@ -76,6 +77,38 @@ exports.deleteMilestone = async (req, res) => {
             return res.status(404).json({ success: false, message: "Milestone not found" });
         }
         res.status(200).json({ success: true, message: "Milestone deleted successfully", milestone });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.getUserAchievedMilestones = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
+        const skip = (page - 1) * limit;
+
+        const totalItems = await UserMilestone.countDocuments({ userId });
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const userMilestones = await UserMilestone.find({ userId })
+            .populate("milestoneId")
+            .sort({ achieved_at: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        res.status(200).json({
+            success: true,
+            pagination: {
+                currentPage: page,
+                totalPages,
+                totalItems,
+                pageSize: limit,
+                itemsCount: userMilestones.length,
+                results: userMilestones,
+            },
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
