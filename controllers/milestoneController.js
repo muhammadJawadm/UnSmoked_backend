@@ -12,8 +12,29 @@ exports.createMilestone = async (req, res) => {
 
 exports.getAllMilestones = async (req, res) => {
     try {
-        const milestones = await Milestone.find().sort({ createdAt: -1 });
-        res.status(200).json({ success: true, milestones });
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
+        const skip = (page - 1) * limit;
+
+        const totalItems = await Milestone.countDocuments();
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const milestones = await Milestone.find()
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        res.status(200).json({
+            success: true,
+            pagination: {
+                currentPage: page,
+                totalPages,
+                totalItems,
+                pageSize: limit,
+                itemsCount: milestones.length,
+                results: milestones,
+            },
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
