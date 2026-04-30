@@ -117,7 +117,7 @@ const tryAutoActivate = async (challenge) => {
 
     challenge.status = "active";
     challenge.startAt = new Date();
-    challenge.endsAt = new Date(Date.now() + TEST_CHALLENGE_DURATION_MS);
+    challenge.endsAt = new Date(Date.now() + challenge.duration * 24 * 60 * 60 * 1000);
     await challenge.save();
 
     // Auto-create day-1 challenge boards for all accepted participants
@@ -818,7 +818,7 @@ exports.startChallenge = async (req, res) => {
 
         challenge.status = "active";
         challenge.startAt = new Date();
-        challenge.endsAt = new Date(Date.now() + TEST_CHALLENGE_DURATION_MS);
+        challenge.endsAt = new Date(Date.now() + challenge.duration * 24 * 60 * 60 * 1000);
         await challenge.save();
 
         // Create day-1 challenge boards for all accepted participants
@@ -906,8 +906,8 @@ exports.getMyChallenges = async (req, res) => {
         const userId = req.user.id;
 
         const currentPage = parseInt(req.query.page) || 1;
-        const pageSize    = parseInt(req.query.limit) || 10;
-        const skip        = (currentPage - 1) * pageSize;
+        const pageSize = parseInt(req.query.limit) || 10;
+        const skip = (currentPage - 1) * pageSize;
 
         // Allowed status values (default → "all")
         const VALID_STATUSES = ["all", "ongoing", "created", "joined", "completed", "pending", "waiting", "cancelled"];
@@ -922,8 +922,8 @@ exports.getMyChallenges = async (req, res) => {
 
         const populateOpts = [
             { path: "createdBy", select: "name profile_picture" },
-            { path: "category",  select: "name" },
-            { path: "winner",    select: "name profile_picture" },
+            { path: "category", select: "name" },
+            { path: "winner", select: "name profile_picture" },
         ];
 
         // ── Helper: run a DB query only when needed ──────────────────────────
@@ -990,12 +990,12 @@ exports.getMyChallenges = async (req, res) => {
             waitingCount,
             cancelledCount,
         ] = await Promise.all([
-            Challenge.countDocuments({ _id: { $in: myChallengeIds }, status: "active",    moderationStatus: "ok" }),
+            Challenge.countDocuments({ _id: { $in: myChallengeIds }, status: "active", moderationStatus: "ok" }),
             Challenge.countDocuments({ createdBy: userId, status: { $in: ["pending", "waiting", "active"] }, moderationStatus: "ok" }),
             Challenge.countDocuments({ _id: { $in: myChallengeIds }, createdBy: { $ne: userId }, status: { $in: ["waiting", "active"] }, moderationStatus: "ok" }),
             Challenge.countDocuments({ _id: { $in: myChallengeIds }, status: "completed", moderationStatus: "ok" }),
-            Challenge.countDocuments({ createdBy: userId, status: "pending",   moderationStatus: "ok" }),
-            Challenge.countDocuments({ createdBy: userId, status: "waiting",   moderationStatus: "ok" }),
+            Challenge.countDocuments({ createdBy: userId, status: "pending", moderationStatus: "ok" }),
+            Challenge.countDocuments({ createdBy: userId, status: "waiting", moderationStatus: "ok" }),
             Challenge.countDocuments({
                 $or: [{ createdBy: userId }, { _id: { $in: myChallengeIds } }],
                 status: "cancelled",
@@ -1057,13 +1057,13 @@ exports.getMyChallenges = async (req, res) => {
             activeStatus: status,
             pendingInvitesCount,
             tabCounts: {
-                all:       ongoingCount + createdCount + completedCount,
-                ongoing:   ongoingCount,
-                created:   createdCount,
-                joined:    joinedCount,
+                all: ongoingCount + createdCount + completedCount,
+                ongoing: ongoingCount,
+                created: createdCount,
+                joined: joinedCount,
                 completed: completedCount,
-                pending:   pendingCount,
-                waiting:   waitingCount,
+                pending: pendingCount,
+                waiting: waitingCount,
                 cancelled: cancelledCount,
             },
             pagination: {
@@ -1474,7 +1474,7 @@ exports.joinOpenChallenge = async (req, res) => {
         if (challenge.status !== "active") {
             challenge.status = "active";
             challenge.startAt = new Date();
-            challenge.endsAt = new Date(Date.now() + TEST_CHALLENGE_DURATION_MS);
+            challenge.endsAt = new Date(Date.now() + challenge.duration * 24 * 60 * 60 * 1000);
             await challenge.save();
 
             await createChallengeBoardsForParticipants(challenge);
