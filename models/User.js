@@ -21,6 +21,11 @@ const userSchema = new mongoose.Schema({
     badges: [
         { type: mongoose.Schema.Types.ObjectId, ref: "BadgeTemplate" },
     ],
+    notification_preferences: {
+        daily_motivation: { type: Boolean, default: true },
+        challenge_alerts: { type: Boolean, default: true },
+        morning_quote: { type: Boolean, default: true }
+    },
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);

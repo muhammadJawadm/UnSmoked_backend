@@ -15,9 +15,10 @@ const calculateLevel = (xp) => {
  * Creates UserProgress if it doesn't exist
  * @param {String} userId - User's ObjectId
  * @param {Number} xpAmount - XP to add
+ * @param {Boolean} isWinner - Whether the user won the challenge
  * @returns {Object} - Updated UserProgress document
  */
-const addXP = async (userId, xpAmount) => {
+const addXP = async (userId, xpAmount, isWinner = false) => {
     // Find or create user progress
     let progress = await UserProgress.findOne({ userId });
 
@@ -33,6 +34,11 @@ const addXP = async (userId, xpAmount) => {
 
     // Increment challenges completed
     progress.challengesCompleted += 1;
+    if (isWinner) {
+        progress.totalWins += 1;
+    } else {
+        progress.totalLosses += 1;
+    }
 
     // Save and return
     await progress.save();

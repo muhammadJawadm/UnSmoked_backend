@@ -7,6 +7,8 @@ const DailyBoard = require("../models/DailyBoard");
 const Template = require("../models/Template");
 const Category = require("../models/Category");
 const User = require("../models/User");
+const UserProgress = require("../models/UserProgress");
+const ChallengeTaskAssignment = require("../models/ChallengeTaskAssignment");
 const { addXP } = require("../utils/xpSystem");
 const { checkAndAssignBadge } = require("../services/badgeService");
 const sendNotificationToUsers = require("../utils/sendNotification");
@@ -145,7 +147,7 @@ const awardXPToParticipants = async (challenge) => {
         p.xpEarned = xp;
         await p.save();
 
-        const updatedProgress = await addXP(p.userId.toString(), xp);
+        const updatedProgress = await addXP(p.userId.toString(), xp, isWinner);
         await checkAndAssignBadge(p.userId.toString(), "completion", updatedProgress.challengesCompleted);
         await checkAndAssignBadge(p.userId.toString(), "milestone", updatedProgress.level);
 
@@ -1629,6 +1631,119 @@ exports.adminRemoveChallenge = async (req, res) => {
             success: true,
             message: "Challenge removed successfully",
             challenge,
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ─── Match History API ──────────────────────────────────────────────────────
+exports.getMatchHistory = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        // Fetch User Progress for stats
+        let progress = await UserProgress.findOne({ userId });
+        if (!progress) {
+            progress = { totalWins: 0, totalLosses: 0, challengesCompleted: 0 };
+        }
+
+        // Find all completed challenge participations
+        const participations = await ChallengeParticipant.find({
+            userId,
+            inviteStatus: "accepted"
+        })
+            .populate({
+                path: "challengeId",
+                match: { status: "completed" }
+            })
+            .sort({ updatedAt: -1 });
+
+        // Filter out unmatched challenges
+        const completedParticipations = participations.filter(p => p.challengeId);
+
+        // Manual pagination
+        const paginatedParticipations = completedParticipations.slice(skip, skip + limit);
+
+        const matches = await Promise.all(paginatedParticipations.map(async (p) => {
+            const challenge = p.challengeId;
+            const isWinner = challenge.winner && challenge.winner.toString() === userId;
+
+            const allParticipants = await ChallengeParticipant.find({
+                challengeId: challenge._id,
+                inviteStatus: "accepted"
+            }).populate("userId", "name profile_picture");
+
+            let assignedTask = null;
+            if (isWinner) {
+                assignedTask = await ChallengeTaskAssignment.findOne({
+                    challengeId: challenge._id,
+                    assignedBy: userId
+                }).populate("taskId");
+            } else {
+                assignedTask = await ChallengeTaskAssignment.findOne({
+                    challengeId: challenge._id,
+                    assignedTo: userId
+                }).populate("taskId");
+            }
+
+            let taskDetail = null;
+            if (assignedTask) {
+                if (assignedTask.taskId) {
+                    taskDetail = {
+                        title: assignedTask.taskId.title,
+                        description: assignedTask.taskId.description,
+                        status: assignedTask.status
+                    };
+                } else if (assignedTask.customTask) {
+                    taskDetail = {
+                        title: assignedTask.customTask.title,
+                        description: assignedTask.customTask.description,
+                        status: assignedTask.status
+                    };
+                }
+            }
+
+            return {
+                challengeId: challenge._id,
+                title: challenge.title,
+                mode: challenge.mode,
+                createdAt: challenge.createdAt,
+                startAt: challenge.startAt,
+                endsAt: challenge.endsAt,
+                xpReward: p.xpEarned, // Send actual XP earned
+                isWinner,
+                status: isWinner ? "won" : "lost",
+                participants: allParticipants.map(ap => ({
+                    userId: ap.userId._id,
+                    name: ap.userId.name,
+                    profilePicture: ap.userId.profile_picture,
+                    totalCigarettesAvoided: ap.challengeBoardStats?.totalCigarettesAvoided || 0,
+                    totalCigarettesSmoked: ap.challengeBoardStats?.totalCigarettesSmoked || 0,
+                    isWinner: challenge.winner && challenge.winner.toString() === ap.userId._id.toString()
+                })),
+                assignedTask: taskDetail
+            };
+        }));
+
+        res.status(200).json({
+            success: true,
+            stats: {
+                totalWins: progress.totalWins || 0,
+                totalLosses: progress.totalLosses || 0,
+                totalChallengesCompleted: progress.challengesCompleted || 0
+            },
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(completedParticipations.length / limit),
+                totalItems: completedParticipations.length,
+                pageSize: limit,
+                itemsCount: matches.length,
+                results: matches,
+            },
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

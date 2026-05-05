@@ -15,7 +15,8 @@ const {
     loginUser,
     changePassword,
     getAllUsers,
-    googleLogin
+    googleLogin,
+    updateNotificationPreferences
 } = require("../controllers/authController");
 
 const verifyToken = require("../middleware/verifyToken");
@@ -35,6 +36,7 @@ router.get("/profile", verifyToken, getUserProfile);
 router.get("/user/:id", verifyToken, getUserById);
 router.post("/complete-profile", verifyToken, completeProfile);
 router.put("/change-password", verifyToken, changePassword);
+router.put("/settings/notifications", verifyToken, updateNotificationPreferences);
 
 // Admin routes (optional - add authentication middleware if needed)
 router.get("/users", verifyToken, getAllUsers);

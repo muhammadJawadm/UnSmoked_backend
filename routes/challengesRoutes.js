@@ -38,6 +38,9 @@ router.post("/:id/cancel", verifyToken, challengesController.cancelChallenge);
 // 11. My Challenges Hub (Ongoing, Created, Completed)
 router.get("/my", verifyToken, challengesController.getMyChallenges);
 
+// Match History
+router.get("/history", verifyToken, challengesController.getMatchHistory);
+
 // 12. Log Progress
 router.post("/:id/log-progress", verifyToken, challengesController.logProgress);
 

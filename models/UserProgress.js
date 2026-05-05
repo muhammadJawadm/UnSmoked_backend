@@ -7,6 +7,8 @@ const userProgressSchema = new mongoose.Schema(
         level: { type: Number, default: 1, min: 1 },
 
         challengesCompleted: { type: Number, default: 0, min: 0 },
+        totalWins: { type: Number, default: 0, min: 0 },
+        totalLosses: { type: Number, default: 0, min: 0 },
     },
     { timestamps: true }
 );

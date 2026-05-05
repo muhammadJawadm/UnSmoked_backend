@@ -466,7 +466,7 @@ exports.getUserProfile = async (req, res) => {
         // Fetch user progress (XP, level, challenges completed)
         let progress = await UserProgress.findOne({ userId: id });
         if (!progress) {
-            progress = { xp: 0, level: 1, challengesCompleted: 0 };
+            progress = { xp: 0, level: 1, challengesCompleted: 0, totalWins: 0, totalLosses: 0 };
         }
 
         const xpForNextLevel = progress.level * 500;
@@ -482,6 +482,8 @@ exports.getUserProfile = async (req, res) => {
                 xp: progress.xp,
                 level: progress.level,
                 challengesCompleted: progress.challengesCompleted,
+                totalWins: progress.totalWins || 0,
+                totalLosses: progress.totalLosses || 0,
                 xpForNextLevel,
                 xpProgress,
                 overview: {
@@ -527,7 +529,7 @@ exports.getUserById = async (req, res) => {
         // Fetch user progress (XP, level, challenges completed)
         let progress = await UserProgress.findOne({ userId: id });
         if (!progress) {
-            progress = { xp: 0, level: 1, challengesCompleted: 0 };
+            progress = { xp: 0, level: 1, challengesCompleted: 0, totalWins: 0, totalLosses: 0 };
         }
 
         const xpForNextLevel = progress.level * 500;
@@ -543,6 +545,8 @@ exports.getUserById = async (req, res) => {
                 xp: progress.xp,
                 level: progress.level,
                 challengesCompleted: progress.challengesCompleted,
+                totalWins: progress.totalWins || 0,
+                totalLosses: progress.totalLosses || 0,
                 xpForNextLevel,
                 xpProgress,
                 overview: {
@@ -720,6 +724,40 @@ exports.getAllUsers = async (req, res) => {
                 itemsCount: users.length,
                 results: users,
             },
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal server error" });
+    }
+};
+
+// Update Notification Preferences
+exports.updateNotificationPreferences = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { daily_motivation, challenge_alerts, morning_quote } = req.body;
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        if (daily_motivation !== undefined) {
+            user.notification_preferences.daily_motivation = daily_motivation;
+        }
+        if (challenge_alerts !== undefined) {
+            user.notification_preferences.challenge_alerts = challenge_alerts;
+        }
+        if (morning_quote !== undefined) {
+            user.notification_preferences.morning_quote = morning_quote;
+        }
+
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Notification preferences updated",
+            notification_preferences: user.notification_preferences
         });
     } catch (error) {
         console.error(error);
