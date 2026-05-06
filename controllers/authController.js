@@ -354,13 +354,15 @@ exports.googleLogin = async (req, res) => {
         let user = await User.findOne({ $or: [{ googleId }, { email }] });
 
         if (user) {
-            if (!user.googleId) {
-                user.googleId = googleId;
+            if (user.googleId && user.googleId !== googleId) {
+                return res.status(409).json({
+                    success: false,
+                    message: "This email is already linked to a different Google account",
+                });
             }
 
-            if (!user.authProvider) {
-                user.authProvider = "google";
-            }
+            user.googleId = googleId;
+            user.authProvider = "google";
 
             if (!user.name && name) {
                 user.name = name;
@@ -666,6 +668,10 @@ exports.changePassword = async (req, res) => {
 // Delete user
 exports.deleteUser = async (req, res) => {
     try {
+        if (!req.user || !req.user.id) {
+            return res.status(401).json({ success: false, message: "Unauthorized" });
+        }
+
         const userId = req.user.id;
         const user = await User.findById(req.params.id);
         if (!user) {

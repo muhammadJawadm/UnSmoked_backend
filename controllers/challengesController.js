@@ -730,16 +730,11 @@ exports.getCreatorMonitor = async (req, res) => {
 };
 
 // ─── 8. Remind a Pending Invitee ──────────────────────────────────────────
-// POST /challenges/:id/remind   body: { userId }
+// POST /challenges/:id/remind
 exports.remindInvitee = async (req, res) => {
     try {
         const { id } = req.params;
-        const { userId: targetUserId } = req.body;
         const creatorId = req.user.id;
-
-        if (!targetUserId) {
-            return res.status(400).json({ success: false, message: "userId is required" });
-        }
 
         const challenge = await Challenge.findById(id);
         if (!challenge) {
@@ -752,27 +747,33 @@ exports.remindInvitee = async (req, res) => {
             });
         }
 
-        const participant = await ChallengeParticipant.findOne({
+        const pendingParticipants = await ChallengeParticipant.find({
             challengeId: id,
-            userId: targetUserId,
+            role: "invitee",
             inviteStatus: "pending",
-        });
-        if (!participant) {
+        }).select("userId");
+        if (!pendingParticipants.length) {
             return res.status(404).json({
                 success: false,
-                message: "No pending invite found for this user",
+                message: "No pending invites found for this challenge",
             });
         }
 
+        const targetUserIds = pendingParticipants.map((p) => p.userId.toString());
+
         const creator = await User.findById(creatorId).select("name");
         await sendNotificationToUsers(
-            [targetUserId],
+            targetUserIds,
             "Challenge Reminder 🔔",
             `${creator?.name || "Your friend"} is waiting: ${challenge.title}`,
             { type: "challenge_reminder", challengeId: id }
         );
 
-        res.status(200).json({ success: true, message: "Reminder sent successfully" });
+        res.status(200).json({
+            success: true,
+            message: "Reminders sent successfully",
+            sentCount: targetUserIds.length,
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

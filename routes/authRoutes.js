@@ -41,7 +41,7 @@ router.put("/settings/notifications", verifyToken, updateNotificationPreferences
 // Admin routes (optional - add authentication middleware if needed)
 router.get("/users", verifyToken, getAllUsers);
 router.put("/:id", updateUser);
-router.delete("/:id", deleteUser);
+router.delete("/:id", verifyToken, deleteUser);
 
 
 
