@@ -117,17 +117,23 @@ const tryAutoActivate = async (challenge) => {
     const threshold = challenge.mode === "1v1" ? 1 : 3;
     if (acceptedCount < threshold) return false;
 
+    // ── Guard: duration must be a valid positive number ──────────────────
+    const duration = Number(challenge.duration);
+    if (!duration || isNaN(duration) || duration <= 0) {
+        throw new Error(
+            `Challenge is missing a valid duration (got: ${challenge.duration}). Cannot activate.`
+        );
+    }
+
     challenge.status = "active";
     challenge.startAt = new Date();
-    challenge.endsAt = new Date(Date.now() + challenge.duration * 24 * 60 * 60 * 1000);
+    challenge.endsAt = new Date(Date.now() + duration * 24 * 60 * 60 * 1000);
     await challenge.save();
 
-    // Auto-create day-1 challenge boards for all accepted participants
     await createChallengeBoardsForParticipants(challenge);
 
     return true;
 };
-
 /**
  * Award XP + badges to all accepted participants of a completed challenge.
  * Safe to call multiple times — skips participants where xpEarned > 0.
