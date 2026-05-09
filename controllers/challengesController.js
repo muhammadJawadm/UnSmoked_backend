@@ -118,10 +118,10 @@ const tryAutoActivate = async (challenge) => {
     if (acceptedCount < threshold) return false;
 
     // ── Guard: duration must be a valid positive number ──────────────────
-    const duration = Number(challenge.duration);
+    const duration = Number(challenge.durationDays);
     if (!duration || isNaN(duration) || duration <= 0) {
         throw new Error(
-            `Challenge is missing a valid duration (got: ${challenge.duration}). Cannot activate.`
+            `Challenge is missing a valid duration (got: ${challenge.durationDays}). Cannot activate.`
         );
     }
 
