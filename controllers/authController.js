@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const otpGenerator = require("otp-generator");
@@ -8,6 +9,30 @@ const UserProgress = require("../models/UserProgress");
 const { calculateLevel } = require("../utils/xpSystem");
 const { getUserOverview } = require("../utils/overviewSystem");
 const { OAuth2Client } = require("google-auth-library");
+const Post = require("../models/Post");
+const Blog = require("../models/Blog");
+const Comment = require("../models/Comment");
+const Like = require("../models/Like");
+const PostHide = require("../models/PostHide");
+const PostReport = require("../models/PostReport");
+const Notification = require("../models/Notifications");
+const Contact = require("../models/Contact");
+const Feedback = require("../models/Feedback");
+const Badges = require("../models/Badges");
+const UserMilestone = require("../models/UserMilestone");
+const UserOverview = require("../models/UserOverview");
+const DailyBoard = require("../models/DailyBoard");
+const MonthlyBoard = require("../models/MonthlyBoard");
+const Challenge = require("../models/Challenges");
+const ChallengeParticipant = require("../models/ChallengeParticipant");
+const ChallengeDailyBoard = require("../models/ChallengeDailyBoard");
+const ChallengeTaskAssignment = require("../models/ChallengeTaskAssignment");
+const Competition = require("../models/Competition");
+const Board = require("../models/Board");
+const Template = require("../models/Template");
+const Chat = require("../models/Chat");
+const Message = require("../models/Message");
+const Task = require("../models/Task");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -30,6 +55,126 @@ const sendOTPEmail = async (email, otp) => {
         console.error("Failed to send OTP email:", error.response?.body?.errors || error.message);
         // Don't throw — let the registration/flow continue even if email fails
     }
+};
+
+const deleteUserCascade = async (userId, session = null) => {
+    const queryOptions = session ? { session } : {};
+
+    const [
+        postIds,
+        blogIds,
+        chatIds,
+        createdChallengeIds,
+        createdCompetitionIds,
+    ] = await Promise.all([
+        Post.distinct("_id", { userId }).session(session),
+        Blog.distinct("_id", { userId }).session(session),
+        Chat.distinct("_id", { user: userId }).session(session),
+        Challenge.distinct("_id", { createdBy: userId }).session(session),
+        Competition.distinct("_id", { createdBy: userId }).session(session),
+    ]);
+
+    await Otp.deleteMany({ userId }, queryOptions);
+    await UserProgress.deleteMany({ userId }, queryOptions);
+    await UserOverview.deleteMany({ userId }, queryOptions);
+    await UserMilestone.deleteMany({ userId }, queryOptions);
+    await Badges.deleteMany({ userId }, queryOptions);
+
+    await PostHide.deleteMany({ userId }, queryOptions);
+    await PostReport.deleteMany({ userId }, queryOptions);
+    await Comment.deleteMany(
+        {
+            $or: [
+                { userId },
+                { targetType: "Post", targetId: { $in: postIds } },
+                { targetType: "Blog", targetId: { $in: blogIds } },
+            ],
+        },
+        queryOptions
+    );
+    await Like.deleteMany(
+        {
+            $or: [
+                { userId },
+                { targetType: "Post", targetId: { $in: postIds } },
+                { targetType: "Blog", targetId: { $in: blogIds } },
+            ],
+        },
+        queryOptions
+    );
+    await Post.deleteMany({ userId }, queryOptions);
+    await Blog.deleteMany({ userId }, queryOptions);
+
+    await Notification.deleteMany({ userId }, queryOptions);
+    await Contact.deleteMany({ userId }, queryOptions);
+    await Feedback.deleteMany({ userId }, queryOptions);
+    await Task.deleteMany({ userId }, queryOptions);
+
+    await DailyBoard.deleteMany(
+        {
+            $or: [
+                { userId },
+                { challengeId: { $in: createdChallengeIds } },
+            ],
+        },
+        queryOptions
+    );
+    await MonthlyBoard.deleteMany({ userId }, queryOptions);
+
+    await ChallengeParticipant.deleteMany(
+        {
+            $or: [
+                { userId },
+                { challengeId: { $in: createdChallengeIds } },
+            ],
+        },
+        queryOptions
+    );
+    await ChallengeDailyBoard.deleteMany(
+        {
+            $or: [
+                { userId },
+                { challengeId: { $in: createdChallengeIds } },
+            ],
+        },
+        queryOptions
+    );
+    await ChallengeTaskAssignment.deleteMany(
+        {
+            $or: [
+                { assignedBy: userId },
+                { assignedTo: userId },
+                { challengeId: { $in: createdChallengeIds } },
+            ],
+        },
+        queryOptions
+    );
+    await Challenge.deleteMany({ createdBy: userId }, queryOptions);
+    await Challenge.updateMany(
+        { winner: userId },
+        { $unset: { winner: "" } },
+        queryOptions
+    );
+
+    await Board.deleteMany(
+        {
+            $or: [
+                { userId },
+                { competition: { $in: createdCompetitionIds } },
+            ],
+        },
+        queryOptions
+    );
+    await Competition.deleteMany({ createdBy: userId }, queryOptions);
+    await Competition.updateMany(
+        { "players.user": userId },
+        { $pull: { players: { user: userId } } },
+        queryOptions
+    );
+
+    await Template.deleteMany({ createdBy: userId }, queryOptions);
+    await Chat.deleteMany({ user: userId }, queryOptions);
+    await Message.deleteMany({ chat: { $in: chatIds } }, queryOptions);
 };
 
 exports.registerUser = async (req, res) => {
@@ -681,7 +826,29 @@ exports.deleteUser = async (req, res) => {
             return res.status(403).json({ success: false, message: "You are not authorized to delete this user" });
         }
 
-        await User.findByIdAndDelete(req.params.id);
+        const session = await mongoose.startSession();
+        try {
+            try {
+                await session.withTransaction(async () => {
+                    await deleteUserCascade(userId, session);
+                    await User.deleteOne({ _id: req.params.id }, { session });
+                });
+            } catch (transactionError) {
+                const message = transactionError?.message || "";
+
+                if (
+                    message.includes("Transaction numbers are only allowed") ||
+                    message.includes("Transaction support is")
+                ) {
+                    await deleteUserCascade(userId);
+                    await User.findByIdAndDelete(req.params.id);
+                } else {
+                    throw transactionError;
+                }
+            }
+        } finally {
+            session.endSession();
+        }
 
         res.json({ success: true, message: "User deleted successfully" });
     } catch (error) {
