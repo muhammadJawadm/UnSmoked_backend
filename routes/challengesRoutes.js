@@ -59,6 +59,9 @@ router.post("/:id/join", verifyToken, challengesController.joinOpenChallenge);
 // 16. My Active Challenge — full detail + board (token only, no params)
 router.get("/my-active", verifyToken, challengesController.getMyActiveChallenge);
 
+// 17. Get Challenge By Id
+router.get("/:id", verifyToken, challengesController.getChallengeById);
+
 // Admin: Remove a Challenge
 router.post("/admin/:id/remove", verifyToken, challengesController.adminRemoveChallenge);
 

@@ -166,6 +166,56 @@ const awardXPToParticipants = async (challenge) => {
     }
 };
 
+// ─── Get Challenge By ID ───────────────────────────────────────────────────
+// GET /challenges/:id
+exports.getChallengeById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: "Invalid challenge ID format" });
+        }
+
+        const challenge = await Challenge.findById(id)
+            .populate("createdBy", "name profile_picture")
+            .populate("category", "name")
+            .populate("winner", "name profile_picture");
+
+        if (!challenge || challenge.moderationStatus === "removed") {
+            return res.status(404).json({ success: false, message: "Challenge not found" });
+        }
+
+        const myParticipant = await ChallengeParticipant.findOne({ challengeId: id, userId })
+            .populate("userId", "name profile_picture");
+
+        const isCreator = challenge.createdBy?._id?.toString() === userId;
+
+        // Private challenge modes require user relationship with the challenge.
+        if (!isCreator && !myParticipant && challenge.mode !== "open") {
+            return res.status(403).json({
+                success: false,
+                message: "You are not allowed to view this challenge",
+            });
+        }
+
+        const acceptedCount = await ChallengeParticipant.countDocuments({
+            challengeId: id,
+            inviteStatus: "accepted",
+        });
+
+        return res.status(200).json({
+            success: true,
+            challenge,
+            myParticipant: myParticipant || null,
+            acceptedCount,
+            isCreator,
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // ─── 1. Create Challenge ────────────────────────────────────────────────────
 // POST /challenges/create
 exports.createChallenge = async (req, res) => {
