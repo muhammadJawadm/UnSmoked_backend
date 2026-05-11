@@ -318,8 +318,6 @@ exports.markSlot = async (req, res) => {
             inviteStatus: "accepted",
         }).select("challengeId");
 
-        let updatedChallengeBoards = [];
-
         if (myParticipations.length) {
             const challengeIds = myParticipations.map((p) => p.challengeId);
             const activeChallenges = await Challenge.find({
@@ -331,7 +329,6 @@ exports.markSlot = async (req, res) => {
             for (const ch of activeChallenges) {
                 const todayUTC = getTodayDate();
 
-                // Find or create today's challenge board (challengeId = ch._id)
                 let challengeBoard = await DailyBoard.findOne({
                     challengeId: ch._id,
                     userId,
@@ -370,17 +367,37 @@ exports.markSlot = async (req, res) => {
                         "challengeBoardStats.totalDaysFilled":        daysFilled,
                     }
                 );
+            }
+        }
 
-                updatedChallengeBoards.push({ challengeId: ch._id, challengeBoard });
+        // ── Build response matching getTodayBoard format ───────────────────────
+        let activeChallenge = null;
+        let activeChallengeBoard = null;
+
+        if (myParticipations.length) {
+            const challengeIds = myParticipations.map((p) => p.challengeId);
+            activeChallenge = await Challenge.findOne({
+                _id: { $in: challengeIds },
+                status: "active",
+                moderationStatus: "ok",
+            }).select("_id title durationDays boardSize endsAt startAt");
+
+            if (activeChallenge) {
+                const todayUTC = getTodayDate();
+                activeChallengeBoard = await DailyBoard.findOne({
+                    challengeId: activeChallenge._id,
+                    userId,
+                    date: todayUTC,
+                });
             }
         }
 
         res.status(200).json({
             success: true,
             message: "Slot updated successfully",
-            dailyBoard,
+            dailyBoard: activeChallengeBoard ? activeChallengeBoard : dailyBoard,
             lifetimeStats,
-            updatedChallengeBoards,
+            activeChallenge: activeChallenge || null,
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
