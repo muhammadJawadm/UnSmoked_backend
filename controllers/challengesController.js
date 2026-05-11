@@ -76,7 +76,7 @@ const createChallengeBoardsForParticipants = async (challenge) => {
         challengeId: challenge._id,
         inviteStatus: "accepted",
     }).select("userId");
-
+ console.log("Board creation — accepted participants found:", accepted.length);
     const today = getTodayUTC();
 
     for (const p of accepted) {
@@ -1487,21 +1487,53 @@ exports.joinOpenChallenge = async (req, res) => {
             return res.status(400).json({ success: false, message: "You are already the creator of this challenge" });
         }
 
-        const existingParticipant = await ChallengeParticipant.findOne({
-            challengeId: id,
-            userId,
-            inviteStatus: "accepted",
-        });
+       const existingParticipant = await ChallengeParticipant.findOne({
+    challengeId: id,
+    userId,
+    inviteStatus: "accepted",
+});
 
-        if (existingParticipant) {
-            return res.status(200).json({
-                success: true,
-                message: "You have already joined this challenge",
-                challenge,
-                participant: existingParticipant,
-                challengeActivated: challenge.status === "active",
-            });
-        }
+if (existingParticipant) {
+    // ✅ If challenge never activated, try again now
+    let challengeActivated = false;
+
+    if (challenge.status !== "active") {
+        challenge.status = "active";
+        challenge.startAt = new Date();
+        challenge.endsAt = new Date(Date.now() + challenge.durationDays * 24 * 60 * 60 * 1000);
+        await challenge.save();
+
+        await createChallengeBoardsForParticipants(challenge);
+        challengeActivated = true;
+
+        const accepted = await ChallengeParticipant.find({
+            challengeId: id,
+            inviteStatus: "accepted",
+        }).select("userId");
+
+        await sendNotificationToUsers(
+            accepted.map((p) => p.userId.toString()),
+            "Challenge Started! 🚀",
+            `${challenge.title} is now active. Give it your best!`,
+            { type: "challenge_started", challengeId: challenge._id.toString() }
+        );
+
+        challenge = await Challenge.findById(id)
+            .populate("createdBy", "name profile_picture")
+            .populate("category", "name")
+            .populate("winner", "name profile_picture");
+    }
+
+    return res.status(200).json({
+        success: true,
+        message: challengeActivated
+            ? "Challenge is now active"
+            : "You have already joined this challenge",
+        challenge,
+        participant: existingParticipant,
+        challengeActivated,
+    });
+}
 
         const existingActive = await hasActiveChallenge(userId);
         if (existingActive) {
