@@ -49,13 +49,17 @@ exports.getAllPosts = async (req, res) => {
 
         const postIds = posts.map(post => post._id);
 
-        // Get likes and comment counts in parallel
-        const [userLikes, commentCounts] = await Promise.all([
+        // Get current user's likes + total likes/comments per post in parallel
+        const [userLikes, likeCounts, commentCounts] = await Promise.all([
             Like.find({
                 userId: currentUserId,
                 targetId: { $in: postIds },
                 targetType: "Post"
             }).select("targetId"),
+            Like.aggregate([
+                { $match: { targetId: { $in: postIds }, targetType: "Post" } },
+                { $group: { _id: "$targetId", count: { $sum: 1 } } }
+            ]),
             Comment.aggregate([
                 { $match: { targetId: { $in: postIds }, targetType: "Post" } },
                 { $group: { _id: "$targetId", count: { $sum: 1 } } }
@@ -63,7 +67,7 @@ exports.getAllPosts = async (req, res) => {
         ]);
 
         const likedPostIds = new Set(userLikes.map(like => like.targetId.toString()));
-        const likeCountMap = new Map(userLikes.map(like => [like.targetId.toString(), like.count]));
+        const likeCountMap = new Map(likeCounts.map(l => [l._id.toString(), l.count]));
         const commentCountMap = new Map(commentCounts.map(c => [c._id.toString(), c.count]));
 
         // Add is_liked and comments_count to each post
