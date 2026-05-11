@@ -877,7 +877,7 @@ exports.startChallenge = async (req, res) => {
 
         challenge.status = "active";
         challenge.startAt = new Date();
-        challenge.endsAt = new Date(Date.now() + challenge.duration * 24 * 60 * 60 * 1000);
+        challenge.endsAt = new Date(Date.now() + challenge.durationDays * 24 * 60 * 60 * 1000);
         await challenge.save();
 
         // Create day-1 challenge boards for all accepted participants
@@ -1533,7 +1533,7 @@ exports.joinOpenChallenge = async (req, res) => {
         if (challenge.status !== "active") {
             challenge.status = "active";
             challenge.startAt = new Date();
-            challenge.endsAt = new Date(Date.now() + challenge.duration * 24 * 60 * 60 * 1000);
+            challenge.endsAt = new Date(Date.now() + challenge.durationDays * 24 * 60 * 60 * 1000);
             await challenge.save();
 
             await createChallengeBoardsForParticipants(challenge);
