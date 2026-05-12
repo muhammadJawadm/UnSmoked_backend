@@ -33,29 +33,10 @@ const Template = require("../models/Template");
 const Chat = require("../models/Chat");
 const Message = require("../models/Message");
 const Task = require("../models/Task");
+const sendEmail = require("../utils/sendEmail");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// Initialize SendGrid
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
-const sendOTPEmail = async (email, otp) => {
-    const msg = {
-        to: email,
-        from: process.env.SENDGRID_FROM_EMAIL, // Must be a verified sender in SendGrid
-        subject: "Your OTP for verification",
-        text: `Your OTP is ${otp}`,
-        html: `<p>Your OTP is <strong>${otp}</strong></p>`,
-    };
-
-    try {
-        await sgMail.send(msg);
-        console.log("Email sent to:", email);
-    } catch (error) {
-        console.error("Failed to send OTP email:", error.response?.body?.errors || error.message);
-        // Don't throw — let the registration/flow continue even if email fails
-    }
-};
 
 const deleteUserCascade = async (userId, session = null) => {
     const queryOptions = session ? { session } : {};
@@ -215,7 +196,7 @@ exports.registerUser = async (req, res) => {
 
         await otpEntry.save();
 
-        await sendOTPEmail(email, otp);
+        await sendEmail(email, otp);
 
         // Generate token for immediate authentication
         const token = generateToken(newUser._id);
@@ -303,7 +284,7 @@ exports.resendOtp = async (req, res) => {
         await otpEntry.save();
 
         // Send email
-        await sendOTPEmail(email, otp);
+        await sendEmail(email, otp);
 
         res.status(200).json({ success: true, message: "OTP resent successfully. Please check your email." });
     } catch (error) {
@@ -334,7 +315,7 @@ exports.forgotPassword = async (req, res) => {
         await otpEntry.save();
 
         // Send OTP email
-        await sendOTPEmail(email, otp);
+        await sendEmail(email, otp);
 
         res.status(200).json({ success: true, message: "OTP sent to your email" });
     } catch (error) {

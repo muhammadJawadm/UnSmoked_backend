@@ -119,23 +119,6 @@ exports.deleteTask = async (req, res) => {
 
 // ─── Challenge Task Assignment APIs ──────────────────────────────────────────────
 
-/**
- * POST /tasks/challenge-assign
- * Winner assigns one or more tasks to the loser after a challenge completes.
- *
- * Body:
- * {
- *   challengeId: "...",
- *   assignedTo:  "<loser userId>",
- *   note:        "optional note",
- *   tasks: [
- *     // Option A — existing task
- *     { taskId: "<existingTaskId>" },
- *     // Option B — custom inline
- *     { customTask: { title: "...", description: "...", xps_points: 10 } }
- *   ]
- * }
- */
 exports.assignChallengeTask = async (req, res) => {
     try {
         const assignedBy = req.user.id;

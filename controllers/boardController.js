@@ -766,30 +766,6 @@ exports.getLeaderboard = async (req, res) => {
     }
 };
 
-// ═══════════════════════════════════════════
-// LEGACY BOARD APIs (for competition boards)
-// ═══════════════════════════════════════════
-// exports.createBoard = async (req, res) => {
-//     try {
-//         const userId = req.user.id;
-//         const { boardSize } = req.body;
-//         if (!boardSize || boardSize <= 0) {
-//             return res.status(400).json({ message: "valid Board size is required" });
-//         }
-//         const existingBoard = await Board.findOne({ userId });
-//         if (existingBoard) {
-//             return res.status(400).json({ success: false, message: "Board already exists" });
-//         }
-//         const days = [];
-//         for (let i = 1; i <= boardSize; i++) {
-//             days.push({ day: i, smoked: null, date: new Date(Date.now() + (i - 1) * 24 * 60 * 60 * 1000) });
-//         }
-//         const board = await Board.create({ userId, boardSize, days });
-//         res.status(201).json({ success: true, message: "Board created successfully", board });
-//     } catch (error) {
-//         res.status(500).json({ success: false, message: error.message });
-//     }
-// }
 
 exports.getBoard = async (req, res) => {
     try {
