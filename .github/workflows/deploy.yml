@@ -19,10 +19,11 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          port: 22                            # SSH port, always 22
+          port: 22
           script: |
-            cd ${{ secrets.EC2_APP_DIR }}
+            cd /home/ubuntu/UnSmoked_backend
             git pull origin main
             npm install --omit=dev
             pm2 restart unsmoked-backend
+            pm2 logs unsmoked-backend --lines 5 --nostream
             echo "✅ Deployed at $(date)"
