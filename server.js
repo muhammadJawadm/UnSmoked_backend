@@ -75,11 +75,11 @@ app.use("/post-reports",          postReportRoutes);
 
 async function connectDatabase() {
     await mongoose.connect(process.env.MONGODB_URI);
-    console.log("[DB] Connected to MongoDB successfully");
+    console.log(" Connected to MongoDB successfully");
 
     // Keep DailyBoard indexes aligned with the schema to avoid stale unique-index conflicts.
     await DailyBoard.syncIndexes();
-    console.log("[DB] DailyBoard indexes synced");
+    console.log("DailyBoard indexes synced");
 }
 
 // ─── Server Bootstrap ─────────────────────────────────────────────────────────
