@@ -89,7 +89,7 @@ async function bootstrap() {
         await connectDatabase();
 
         app.listen(PORT, () => {
-            console.log(` Running on port ${PORT}`);
+            console.log(` Server Running on port ${PORT}`);
             startCronJobs();
         });
     } catch (error) {
