@@ -2,7 +2,6 @@ const mongoose = require("mongoose");
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const otpGenerator = require("otp-generator");
-const sgMail = require("@sendgrid/mail");
 const Otp = require("../models/Otp");
 const generateToken = require("../utils/jwt");
 const UserProgress = require("../models/UserProgress");
