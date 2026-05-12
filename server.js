@@ -75,11 +75,11 @@ app.use("/post-reports",          postReportRoutes);
 
 async function connectDatabase() {
     await mongoose.connect(process.env.MONGODB_URI);
-    console.log(" Connected to MongoDB successfully");
+    console.log("[DB] Connected to MongoDB successfully");
 
     // Keep DailyBoard indexes aligned with the schema to avoid stale unique-index conflicts.
     await DailyBoard.syncIndexes();
-    console.log("DailyBoard indexes synced");
+    console.log("[DB] DailyBoard indexes synced");
 }
 
 // ─── Server Bootstrap ─────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ async function bootstrap() {
         await connectDatabase();
 
         app.listen(PORT, () => {
-            console.log(` Server Running on port ${PORT}`);
+            console.log(`[Server] Server Running on port ${PORT}`);
             startCronJobs();
         });
     } catch (error) {
