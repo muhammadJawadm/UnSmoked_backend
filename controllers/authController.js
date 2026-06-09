@@ -24,7 +24,6 @@ const DailyBoard = require("../models/DailyBoard");
 const MonthlyBoard = require("../models/MonthlyBoard");
 const Challenge = require("../models/Challenges");
 const ChallengeParticipant = require("../models/ChallengeParticipant");
-const ChallengeDailyBoard = require("../models/ChallengeDailyBoard");
 const ChallengeTaskAssignment = require("../models/ChallengeTaskAssignment");
 const Competition = require("../models/Competition");
 const Board = require("../models/Board");
@@ -102,15 +101,6 @@ const deleteUserCascade = async (userId, session = null) => {
     await MonthlyBoard.deleteMany({ userId }, queryOptions);
 
     await ChallengeParticipant.deleteMany(
-        {
-            $or: [
-                { userId },
-                { challengeId: { $in: createdChallengeIds } },
-            ],
-        },
-        queryOptions
-    );
-    await ChallengeDailyBoard.deleteMany(
         {
             $or: [
                 { userId },

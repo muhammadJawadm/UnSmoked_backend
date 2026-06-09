@@ -47,28 +47,31 @@ async function autoCompleteChallenges() {
             });
 
             // Award XP and badges to each participant (skip already-awarded ones)
+            const baseXp = Number(challenge.xpReward) || 50; // fallback for legacy docs missing xpReward
             for (const participant of participants) {
                 if (participant.xpEarned > 0) continue;
 
-                const isWinner  = winnerId?.toString() === participant.userId.toString();
-                const xpAmount  = isWinner
-                    ? challenge.xpReward
-                    : Math.floor(challenge.xpReward / 2);
+                try {
+                    const isWinner = winnerId?.toString() === participant.userId.toString();
+                    const xpAmount = isWinner ? baseXp : Math.floor(baseXp / 2);
 
-                participant.xpEarned = xpAmount;
-                await participant.save();
+                    participant.xpEarned = xpAmount;
+                    await participant.save();
 
-                const updatedProgress = await addXP(participant.userId.toString(), xpAmount);
-                await checkAndAssignBadge(
-                    participant.userId.toString(),
-                    "completion",
-                    updatedProgress.challengesCompleted
-                );
-                await checkAndAssignBadge(
-                    participant.userId.toString(),
-                    "milestone",
-                    updatedProgress.level
-                );
+                    const updatedProgress = await addXP(participant.userId.toString(), xpAmount, isWinner);
+                    await checkAndAssignBadge(
+                        participant.userId.toString(),
+                        "completion",
+                        updatedProgress.challengesCompleted
+                    );
+                    await checkAndAssignBadge(
+                        participant.userId.toString(),
+                        "milestone",
+                        updatedProgress.level
+                    );
+                } catch (participantError) {
+                    console.error(`[Cron] Failed to award XP to participant ${participant.userId}:`, participantError.message);
+                }
             }
 
             // Notify all participants

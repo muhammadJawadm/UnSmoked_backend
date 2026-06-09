@@ -46,7 +46,7 @@ const challengeSchema = new mongoose.Schema(
         // Mode
         mode: {
             type: String,
-            enum: ["1v1", "4-player", "open"],
+            enum: ["1v1", "4-player"],
             required: true,
         },
 
@@ -69,13 +69,6 @@ const challengeSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             default: null,
-        },
-
-        // Invite token — used for open challenges and share-link flow
-        inviteToken: {
-            type: String,
-            unique: true,
-            sparse: true,
         },
 
         // Admin moderation

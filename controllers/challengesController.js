@@ -191,8 +191,7 @@ exports.getChallengeById = async (req, res) => {
 
         const isCreator = challenge.createdBy?._id?.toString() === userId;
 
-        // Private challenge modes require user relationship with the challenge.
-        if (!isCreator && !myParticipant && challenge.mode !== "open") {
+        if (!isCreator && !myParticipant) {
             return res.status(403).json({
                 success: false,
                 message: "You are not allowed to view this challenge",
@@ -245,10 +244,10 @@ exports.createChallenge = async (req, res) => {
         } = req.body;
 
         // Validate mode
-        if (!mode || !["1v1", "4-player", "open"].includes(mode)) {
+        if (!mode || !["1v1", "4-player"].includes(mode)) {
             return res.status(400).json({
                 success: false,
-                message: "mode must be '1v1', '4-player', or 'open'",
+                message: "mode must be '1v1' or '4-player'",
             });
         }
 
@@ -340,14 +339,6 @@ exports.createChallenge = async (req, res) => {
             };
         }
 
-        // ── Open challenges wait until first player joins ──────────────────
-        if (mode === "open") {
-            challengeData.inviteToken = generateInviteToken();
-            challengeData.status = "waiting";
-        }
-        // ── 1v1 / 4-player challenges start as "pending" (no invites yet) ───
-        // The model default is already "pending"; this is just a comment marker.
-
         const challenge = await Challenge.create(challengeData);
 
         // Creator is always participant #1, auto-accepted
@@ -365,10 +356,7 @@ exports.createChallenge = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message:
-                mode === "open"
-                    ? "Open challenge created. It will start when the first player joins"
-                    : "Challenge created. Invite players to move it to 'waiting'",
+            message: "Challenge created. Invite players to move it to 'waiting'",
             challenge: populated,
         });
     } catch (error) {
@@ -410,13 +398,6 @@ exports.invitePlayers = async (req, res) => {
                         : `Cannot invite to a challenge with status '${challenge.status}'`,
             });
         }
-        if (challenge.mode === "open") {
-            return res.status(400).json({
-                success: false,
-                message: "Open challenges use share links, not direct invites",
-            });
-        }
-
         // Mode-based invite cap
         const maxInvites = challenge.mode === "1v1" ? 1 : 3;
         if (userIds.length > maxInvites) {
@@ -573,9 +554,8 @@ exports.getChallengeDetail = async (req, res) => {
             return res.status(404).json({ success: false, message: "Challenge not found" });
         }
 
-        // Verify the requesting user is a participant (except open challenges)
         const myParticipant = await ChallengeParticipant.findOne({ challengeId: id, userId });
-        if (!myParticipant && challenge.mode !== "open") {
+        if (!myParticipant) {
             return res.status(403).json({
                 success: false,
                 message: "You have not been invited to this challenge",
@@ -1223,23 +1203,36 @@ exports.getLeaderboard = async (req, res) => {
             });
         }
 
-        const leaderboard = await ChallengeParticipant.find({
+        const participants = await ChallengeParticipant.find({
             challengeId: id,
             inviteStatus: "accepted",
-        })
-            .populate("userId", "name profile_picture")
-            .sort({ progressValue: -1 });
+        }).populate("userId", "name profile_picture");
 
-        const topValue = leaderboard[0]?.progressValue || 1;
+        // Compute avoidance rate = avoided / (avoided + smoked) for each participant
+        const withRates = participants.map((p) => {
+            const avoided = p.challengeBoardStats.totalCigarettesAvoided;
+            const smoked  = p.challengeBoardStats.totalCigarettesSmoked;
+            const total   = avoided + smoked;
+            const avoidanceRate = total > 0 ? avoided / total : 0;
+            return { p, avoided, smoked, avoidanceRate };
+        });
 
-        const ranked = leaderboard.map((p, index) => ({
+        // Rank by avoidance rate descending (higher rate = better)
+        withRates.sort((a, b) => b.avoidanceRate - a.avoidanceRate);
+
+        const ranked = withRates.map(({ p, avoided, smoked, avoidanceRate }, index) => ({
             rank: index + 1,
             user: p.userId,
-            progressValue: p.progressValue,
-            percentage: topValue > 0 ? Math.round((p.progressValue / topValue) * 100) : 0,
+            cigarettesAvoided: avoided,
+            cigarettesSmoked: smoked,
+            avoidanceRate: Math.round(avoidanceRate * 100), // 0–100 percentage
             isMe: p.userId._id.toString() === userId,
             xpEarned: p.xpEarned,
         }));
+
+        const myAvoided = myParticipant.challengeBoardStats.totalCigarettesAvoided;
+        const mySmoked  = myParticipant.challengeBoardStats.totalCigarettesSmoked;
+        const myTotal   = myAvoided + mySmoked;
 
         const timeLeftMs =
             challenge.endsAt ? Math.max(0, new Date(challenge.endsAt) - new Date()) : null;
@@ -1249,7 +1242,11 @@ exports.getLeaderboard = async (req, res) => {
             challenge,
             leaderboard: ranked,
             timeLeftMs,
-            myProgressValue: myParticipant.progressValue,
+            myStats: {
+                cigarettesAvoided: myAvoided,
+                cigarettesSmoked:  mySmoked,
+                avoidanceRate:     myTotal > 0 ? Math.round((myAvoided / myTotal) * 100) : 0,
+            },
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -1348,265 +1345,10 @@ exports.completeChallenge = async (req, res) => {
     }
 };
 
-// ─── 15. Discover Preset Challenges — S4 ──────────────────────────────────
-// GET /challenges/discover?category=Health&search=run&page=1&limit=20
-exports.discoverChallenges = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const { category, search } = req.query;
-        const currentPage = Math.max(parseInt(req.query.page) || 1, 1);
-        const pageSize = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
-        const skip = (currentPage - 1) * pageSize;
-
-        const categoryQuery = typeof category === "string" ? category.trim() : "";
-        const searchQuery = typeof search === "string" ? search.trim() : "";
-
-        // ── Resolve category filter ─────────────────────────────────────────
-        let resolvedCategoryId = null;
-        if (categoryQuery && categoryQuery.toLowerCase() !== "all") {
-            if (mongoose.Types.ObjectId.isValid(categoryQuery)) {
-                const categoryExists = await Category.exists({ _id: categoryQuery });
-                if (!categoryExists) {
-                    return res.status(400).json({
-                        success: false,
-                        message: "Invalid category. Category not found",
-                    });
-                }
-                resolvedCategoryId = categoryQuery;
-            } else {
-                const categoryDoc = await Category.findOne({
-                    name: { $regex: `^${escapeRegex(categoryQuery)}$`, $options: "i" },
-                }).select("_id");
-
-                if (!categoryDoc) {
-                    return res.status(400).json({
-                        success: false,
-                        message: "Invalid category. Category not found",
-                    });
-                }
-                resolvedCategoryId = categoryDoc._id;
-            }
-        }
-
-        // ── Open challenges: waiting, open-mode, only creator has joined so far ─
-        // "No one joined" means: the only accepted participant is the creator
-        // (participantCount === 1). We exclude challenges the requesting user
-        // has already joined so they don't appear as joinable to themselves.
-        const openChallengeFilter = {
-            mode: "open",
-            status: "waiting",
-            moderationStatus: "ok",
-            createdBy: { $ne: userId },   // don't show own challenges here
-        };
-        if (resolvedCategoryId) openChallengeFilter.category = resolvedCategoryId;
-        if (searchQuery) {
-            openChallengeFilter.title = { $regex: escapeRegex(searchQuery), $options: "i" };
-        }
-
-        const candidateOpenChallenges = await Challenge.find(openChallengeFilter)
-            .populate("createdBy", "name profile_picture")
-            .populate("category", "name")
-            .sort({ startAt: -1 })
-            .lean();
-
-        // For each candidate, count accepted participants
-        const openChallengesWithStats = await Promise.all(
-            candidateOpenChallenges.map(async (ch) => {
-                const participantCount = await ChallengeParticipant.countDocuments({
-                    challengeId: ch._id,
-                    inviteStatus: "accepted",
-                });
-
-                // Check if requesting user already joined this challenge
-                const alreadyJoined = await ChallengeParticipant.exists({
-                    challengeId: ch._id,
-                    userId,
-                    inviteStatus: "accepted",
-                });
-
-                return {
-                    ...ch,
-                    participantCount,
-                    alreadyJoined: !!alreadyJoined,
-                    // "solo" = only the creator is in it (no one else joined yet)
-                    isSolo: participantCount <= 1,
-                };
-            })
-        );
-
-        // Filter: only challenges the user has NOT already joined
-        const joinableOpenChallenges = openChallengesWithStats.filter(
-            (ch) => !ch.alreadyJoined
-        );
-
-        const totalItems = joinableOpenChallenges.length;
-        const totalPages = Math.ceil(totalItems / pageSize) || 1;
-        const results = joinableOpenChallenges.slice(skip, skip + pageSize);
-
-        res.status(200).json({
-            success: true,
-            pagination: {
-                currentPage,
-                totalPages,
-                totalItems,
-                pageSize,
-                itemsCount: results.length,
-                results,
-            },
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── 15b. Join Open Challenge ─────────────────────────────────────────────
-// POST /challenges/:id/join
-exports.joinOpenChallenge = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const userId = req.user.id;
-
-        let challenge = await Challenge.findById(id)
-            .populate("createdBy", "name profile_picture")
-            .populate("category", "name")
-            .populate("winner", "name profile_picture");
-
-        if (!challenge || challenge.moderationStatus === "removed") {
-            return res.status(404).json({ success: false, message: "Challenge not found" });
-        }
-        if (challenge.mode !== "open") {
-            return res.status(400).json({ success: false, message: "Only open challenges can be joined" });
-        }
-        if (["completed", "cancelled"].includes(challenge.status)) {
-            return res.status(400).json({
-                success: false,
-                message: `Cannot join a challenge with status '${challenge.status}'`,
-            });
-        }
-        if (challenge.createdBy?._id?.toString() === userId) {
-            return res.status(400).json({ success: false, message: "You are already the creator of this challenge" });
-        }
-
-       const existingParticipant = await ChallengeParticipant.findOne({
-    challengeId: id,
-    userId,
-    inviteStatus: "accepted",
-});
-
-if (existingParticipant) {
-    // ✅ If challenge never activated, try again now
-    let challengeActivated = false;
-
-    if (challenge.status !== "active") {
-        challenge.status = "active";
-        challenge.startAt = new Date();
-        challenge.endsAt = new Date(Date.now() + challenge.durationDays * 24 * 60 * 60 * 1000);
-        await challenge.save();
-
-        await createChallengeBoardsForParticipants(challenge);
-        challengeActivated = true;
-
-        const accepted = await ChallengeParticipant.find({
-            challengeId: id,
-            inviteStatus: "accepted",
-        }).select("userId");
-
-        await sendNotificationToUsers(
-            accepted.map((p) => p.userId.toString()),
-            "Challenge Started! 🚀",
-            `${challenge.title} is now active. Give it your best!`,
-            { type: "challenge_started", challengeId: challenge._id.toString() }
-        );
-
-        challenge = await Challenge.findById(id)
-            .populate("createdBy", "name profile_picture")
-            .populate("category", "name")
-            .populate("winner", "name profile_picture");
-    }
-
-    return res.status(200).json({
-        success: true,
-        message: challengeActivated
-            ? "Challenge is now active"
-            : "You have already joined this challenge",
-        challenge,
-        participant: existingParticipant,
-        challengeActivated,
-    });
-}
-
-        const existingActive = await hasActiveChallenge(userId);
-        if (existingActive) {
-            return res.status(400).json({
-                success: false,
-                message: `You already have an active challenge ("${existingActive.title}"). You cannot join another until it ends.`,
-                activeChallengeId: existingActive._id,
-            });
-        }
-
-        const participant = await ChallengeParticipant.findOneAndUpdate(
-            { challengeId: id, userId },
-            {
-                $set: {
-                    role: "invitee",
-                    inviteStatus: "accepted",
-                    respondedAt: new Date(),
-                },
-                $setOnInsert: {
-                    challengeId: id,
-                    userId,
-                },
-            },
-            { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
-
-        let challengeActivated = false;
-
-        if (challenge.status !== "active") {
-            challenge.status = "active";
-            challenge.startAt = new Date();
-            challenge.endsAt = new Date(Date.now() + challenge.durationDays * 24 * 60 * 60 * 1000);
-            await challenge.save();
-
-            await createChallengeBoardsForParticipants(challenge);
-            challengeActivated = true;
-
-            const accepted = await ChallengeParticipant.find({
-                challengeId: id,
-                inviteStatus: "accepted",
-            }).select("userId");
-
-            await sendNotificationToUsers(
-                accepted.map((p) => p.userId.toString()),
-                "Challenge Started! 🚀",
-                `${challenge.title} is now active. Give it your best!`,
-                { type: "challenge_started", challengeId: challenge._id.toString() }
-            );
-
-            challenge = await Challenge.findById(id)
-                .populate("createdBy", "name profile_picture")
-                .populate("category", "name")
-                .populate("winner", "name profile_picture");
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: challengeActivated
-                ? "Joined successfully. Challenge is now active"
-                : "Joined successfully",
-            challenge,
-            participant,
-            challengeActivated,
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
 // ─── 16. My Active Challenge — full detail + board ─────────────────────────
 // GET /challenges/my-active
 // User just passes their token — returns the single active challenge they're in
-// (challenge info + leaderboard + today's ChallengeDailyBoard + all days filled).
+// (challenge info + leaderboard + today's DailyBoard + all days filled).
 exports.getMyActiveChallenge = async (req, res) => {
     try {
         const userId = req.user.id;

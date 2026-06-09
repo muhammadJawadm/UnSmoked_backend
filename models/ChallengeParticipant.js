@@ -35,7 +35,7 @@ const challengeParticipantSchema = new mongoose.Schema(
             },
         ],
 
-        // Challenge board aggregate stats (populated via ChallengeDailyBoard marks)
+        // Challenge board aggregate stats (populated via DailyBoard marks)
         // This is the authoritative source for winner determination & leaderboard.
         challengeBoardStats: {
             totalCigarettesAvoided: { type: Number, default: 0, min: 0 },

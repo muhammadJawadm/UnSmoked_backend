@@ -50,13 +50,7 @@ router.get("/:id/leaderboard", verifyToken, challengesController.getLeaderboard)
 // 14. Get Results / Complete Challenge
 router.post("/:id/complete", verifyToken, challengesController.completeChallenge);
 
-// 15. Discover Preset Challenges
-router.get("/discover", verifyToken, challengesController.discoverChallenges);
-
-// 15b. Join Open Challenge
-router.post("/:id/join", verifyToken, challengesController.joinOpenChallenge);
-
-// 16. My Active Challenge — full detail + board (token only, no params)
+// 15. My Active Challenge — full detail + board (token only, no params)
 router.get("/my-active", verifyToken, challengesController.getMyActiveChallenge);
 
 // 17. Get Challenge By Id
