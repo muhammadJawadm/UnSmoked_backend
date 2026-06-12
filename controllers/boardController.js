@@ -513,65 +513,13 @@ exports.getUserOverviewStats = async (req, res) => {
 exports.getStats = async (req, res) => {
     try {
         const userId = req.user.id;
-        const type = (req.query.type || "day").toLowerCase();
+        const type = (req.query.type || "week").toLowerCase();
 
-        if (!["day", "week", "year"].includes(type)) {
-            return res.status(400).json({ success: false, message: "type must be 'day', 'week', or 'year'" });
+        if (!["week", "month", "year"].includes(type)) {
+            return res.status(400).json({ success: false, message: "type must be 'week', 'month', or 'year'" });
         }
 
         const now = new Date();
-        const todayUTC = getTodayDate();
-
-        // ─── DAY: hourly breakdown of today ───
-        if (type === "day") {
-            const dailyBoard = await DailyBoard.findOne({ userId, date: todayUTC });
-
-            if (!dailyBoard) {
-                return res.status(200).json({
-                    success: true,
-                    type: "day",
-                    date: todayUTC,
-                    hours: [],
-                    total: { cigarettesAvoided: 0, cigarettesSmoked: 0, totalCigarettes: 0 },
-                });
-            }
-
-            // Distribute cigarette slots evenly across 24 hours
-            // Each slot index maps to: hour = floor(index / totalSlots * 24)
-            const totalSlots = dailyBoard.smokes.length;
-            const hourlyMap = {};
-
-            dailyBoard.smokes.forEach((status, index) => {
-                const hour = Math.floor((index / totalSlots) * 24);
-                if (!hourlyMap[hour]) {
-                    hourlyMap[hour] = { hour, cigarettesAvoided: 0, cigarettesSmoked: 0, totalCigarettes: 0 };
-                }
-                if (status === "unsmoked") {
-                    hourlyMap[hour].cigarettesAvoided += 1;
-                    hourlyMap[hour].totalCigarettes += 1;
-                } else if (status === "smoked") {
-                    hourlyMap[hour].cigarettesSmoked += 1;
-                    hourlyMap[hour].totalCigarettes += 1;
-                }
-            });
-
-            // Return all 24 hours (zero-fill missing ones)
-            const hours = Array.from({ length: 24 }, (_, i) => {
-                return hourlyMap[i] || { hour: i, cigarettesAvoided: 0, cigarettesSmoked: 0, totalCigarettes: 0 };
-            });
-
-            return res.status(200).json({
-                success: true,
-                type: "day",
-                date: todayUTC,
-                hours,
-                total: {
-                    cigarettesAvoided: dailyBoard.cigarettesAvoided,
-                    cigarettesSmoked: dailyBoard.cigarettesSmoked,
-                    totalCigarettes: dailyBoard.cigarettesAvoided + dailyBoard.cigarettesSmoked,
-                },
-            });
-        }
 
         // ─── WEEK: each of the last 7 days ───
         if (type === "week") {
@@ -621,6 +569,60 @@ exports.getStats = async (req, res) => {
                 type: "week",
                 days: weekData,
                 total: weekTotal,
+            });
+        }
+
+        // ─── MONTH: each day of the current month ───
+        if (type === "month") {
+            const year  = now.getUTCFullYear();
+            const month = now.getUTCMonth(); // 0-indexed
+            const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+
+            const monthStart = new Date(Date.UTC(year, month, 1));
+            const monthEnd   = new Date(Date.UTC(year, month, daysInMonth));
+
+            const dailyBoards = await DailyBoard.find({
+                userId,
+                challengeId: null,
+                date: { $gte: monthStart, $lte: monthEnd },
+            });
+
+            const boardByDate = {};
+            dailyBoards.forEach((db) => {
+                const key = db.date.toISOString().split("T")[0];
+                boardByDate[key] = db;
+            });
+
+            const monthData = Array.from({ length: daysInMonth }, (_, i) => {
+                const d   = new Date(Date.UTC(year, month, i + 1));
+                const key = d.toISOString().split("T")[0];
+                const db  = boardByDate[key];
+                return {
+                    date: d,
+                    day: i + 1,
+                    cigarettesAvoided: db ? db.cigarettesAvoided : 0,
+                    cigarettesSmoked:  db ? db.cigarettesSmoked  : 0,
+                    totalCigarettes:   db ? db.cigarettesAvoided + db.cigarettesSmoked : 0,
+                };
+            });
+
+            const monthTotal = monthData.reduce(
+                (acc, d) => {
+                    acc.cigarettesAvoided += d.cigarettesAvoided;
+                    acc.cigarettesSmoked  += d.cigarettesSmoked;
+                    acc.totalCigarettes   += d.totalCigarettes;
+                    return acc;
+                },
+                { cigarettesAvoided: 0, cigarettesSmoked: 0, totalCigarettes: 0 }
+            );
+
+            return res.status(200).json({
+                success: true,
+                type: "month",
+                year,
+                month: month + 1,
+                days: monthData,
+                total: monthTotal,
             });
         }
 

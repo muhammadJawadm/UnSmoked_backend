@@ -2,6 +2,7 @@
 require("dotenv").config();
 
 const express    = require("express");
+const cors       = require("cors");
 const mongoose   = require("mongoose");
 const DailyBoard = require("./models/DailyBoard");
 const { startCronJobs } = require("./crons/index");
@@ -32,6 +33,7 @@ const competitionRoutes   = require("./routes/competitionRoutes");
 const badgeRoutes         = require("./routes/badgeRoutes");
 const postHideRoutes      = require("./routes/postHideRoutes");
 const postReportRoutes    = require("./routes/postReportRoutes");
+const adminRoutes         = require("./routes/adminRoutes");
 
 // ─── App Initialisation ───────────────────────────────────────────────────────
 
@@ -40,6 +42,7 @@ const PORT = process.env.PORT || 5000;
 
 // ─── Global Middleware ────────────────────────────────────────────────────────
 
+app.use(cors());
 app.use(express.json());
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -70,6 +73,7 @@ app.use("/competitions",          competitionRoutes);
 app.use("/badges",                badgeRoutes);
 app.use("/post-hides",            postHideRoutes);
 app.use("/post-reports",          postReportRoutes);
+app.use("/admin",                 adminRoutes);
 
 // ─── Database Connection ──────────────────────────────────────────────────────
 
