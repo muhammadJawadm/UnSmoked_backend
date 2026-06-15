@@ -2,12 +2,20 @@ const express     = require("express");
 const router      = express.Router();
 const verifyAdmin = require("../middleware/verifyAdmin");
 const admin       = require("../controllers/adminController");
+const analytics   = require("../controllers/adminAnalyticsController");
 
 // All routes require admin token
 router.use(verifyAdmin);
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 router.get("/dashboard/stats",                    admin.getDashboardStats);
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+router.get("/analytics/overview",                 analytics.getOverview);
+router.get("/analytics/user-growth",              analytics.getUserGrowth);
+router.get("/analytics/health-impact",            analytics.getHealthImpact);
+router.get("/analytics/challenges",               analytics.getChallengeAnalytics);
+router.get("/analytics/content",                  analytics.getContentAnalytics);
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 router.get("/users",                              admin.getAllUsers);
