@@ -12,6 +12,7 @@ const ChallengeTaskAssignment = require("../models/ChallengeTaskAssignment");
 const { addXP } = require("../utils/xpSystem");
 const { checkAndAssignBadge } = require("../services/badgeService");
 const sendNotificationToUsers = require("../utils/sendNotification");
+const { enrichChallengeCreatorXp, enrichChallengesCreatorXp } = require("../utils/challengeUtils");
 
 const TEST_CHALLENGE_DURATION_MS = 10 * 60 * 1000;
 
@@ -198,14 +199,14 @@ exports.getChallengeById = async (req, res) => {
             });
         }
 
-        const acceptedCount = await ChallengeParticipant.countDocuments({
-            challengeId: id,
-            inviteStatus: "accepted",
-        });
+        const [acceptedCount, enrichedChallenge] = await Promise.all([
+            ChallengeParticipant.countDocuments({ challengeId: id, inviteStatus: "accepted" }),
+            enrichChallengeCreatorXp(challenge),
+        ]);
 
         return res.status(200).json({
             success: true,
-            challenge,
+            challenge: enrichedChallenge,
             myParticipant: myParticipant || null,
             acceptedCount,
             isCreator,
@@ -357,7 +358,7 @@ exports.createChallenge = async (req, res) => {
         return res.status(201).json({
             success: true,
             message: "Challenge created. Invite players to move it to 'waiting'",
-            challenge: populated,
+            challenge: await enrichChallengeCreatorXp(populated),
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -389,13 +390,10 @@ exports.invitePlayers = async (req, res) => {
                 message: "Only the challenge creator can invite players",
             });
         }
-        if (challenge.status !== "pending") {
+        if (!["pending", "waiting"].includes(challenge.status)) {
             return res.status(400).json({
                 success: false,
-                message:
-                    challenge.status === "waiting"
-                        ? "Invites have already been sent. Challenge is now in waiting status"
-                        : `Cannot invite to a challenge with status '${challenge.status}'`,
+                message: `Cannot invite to a challenge with status '${challenge.status}'`,
             });
         }
         // Mode-based invite cap
@@ -417,47 +415,69 @@ exports.invitePlayers = async (req, res) => {
             });
         }
 
-        // Skip already-invited users
+        // Separate existing participants by their current invite status
         const existing = await ChallengeParticipant.find({
             challengeId: id,
             userId: { $in: userIds },
-        }).select("userId");
-        const alreadyInvitedIds = existing.map((p) => p.userId.toString());
-        const toInvite = userIds.filter((uid) => !alreadyInvitedIds.includes(uid));
+        }).select("userId inviteStatus");
 
-        if (toInvite.length === 0) {
+        const declinedIds    = existing.filter((p) => p.inviteStatus === "declined").map((p) => p.userId.toString());
+        const alreadyActiveIds = existing.filter((p) => p.inviteStatus !== "declined").map((p) => p.userId.toString());
+
+        // Only skip users who are already pending or accepted — not those who declined
+        const toInviteNew    = userIds.filter((uid) => !alreadyActiveIds.includes(uid) && !declinedIds.includes(uid));
+        const toReinvite     = userIds.filter((uid) => declinedIds.includes(uid));
+
+        if (toInviteNew.length === 0 && toReinvite.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: "All specified users have already been invited",
+                message: "All specified users have already been invited and are pending or accepted",
             });
         }
 
-        const participants = await ChallengeParticipant.insertMany(
-            toInvite.map((userId) => ({
-                challengeId: challenge._id,
-                userId,
-                role: "invitee",
-                inviteStatus: "pending",
-            }))
-        );
+        // Reset declined participants back to pending
+        if (toReinvite.length > 0) {
+            await ChallengeParticipant.updateMany(
+                { challengeId: id, userId: { $in: toReinvite } },
+                { inviteStatus: "pending", respondedAt: null }
+            );
+        }
+
+        // Insert brand-new participants
+        let newParticipants = [];
+        if (toInviteNew.length > 0) {
+            newParticipants = await ChallengeParticipant.insertMany(
+                toInviteNew.map((userId) => ({
+                    challengeId: challenge._id,
+                    userId,
+                    role: "invitee",
+                    inviteStatus: "pending",
+                }))
+            );
+        }
+
+        const allInvited = [...toInviteNew, ...toReinvite];
 
         // Push notification
         const creator = await User.findById(creatorId).select("name");
         await sendNotificationToUsers(
-            toInvite,
+            allInvited,
             "You've been challenged! 🏆",
             `${creator?.name || "Someone"} challenged you: ${challenge.title}`,
             { type: "challenge_invite", challengeId: challenge._id.toString() }
         );
 
-        // ── Transition challenge from "pending" → "waiting" ────────────────
-        challenge.status = "waiting";
-        await challenge.save();
+        // Transition to "waiting" if still pending
+        if (challenge.status === "pending") {
+            challenge.status = "waiting";
+            await challenge.save();
+        }
 
         return res.status(201).json({
             success: true,
-            message: `${toInvite.length} invite(s) sent. Challenge is now in 'waiting' status`,
-            participants,
+            message: `${allInvited.length} invite(s) sent${toReinvite.length > 0 ? ` (${toReinvite.length} re-invited after decline)` : ""}`,
+            newParticipants,
+            reinvitedCount: toReinvite.length,
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -515,6 +535,10 @@ exports.getMyInvites = async (req, res) => {
                     profilePicture: p.userId?.profile_picture || null,
                 }));
 
+                if (inviteObj.challengeId && typeof inviteObj.challengeId === "object") {
+                    inviteObj.challengeId = await enrichChallengeCreatorXp(inviteObj.challengeId);
+                }
+
                 return inviteObj;
             })
         );
@@ -562,14 +586,14 @@ exports.getChallengeDetail = async (req, res) => {
             });
         }
 
-        const acceptedCount = await ChallengeParticipant.countDocuments({
-            challengeId: id,
-            inviteStatus: "accepted",
-        });
+        const [acceptedCount, enrichedChallenge] = await Promise.all([
+            ChallengeParticipant.countDocuments({ challengeId: id, inviteStatus: "accepted" }),
+            enrichChallengeCreatorXp(challenge),
+        ]);
 
         res.status(200).json({
             success: true,
-            challenge,
+            challenge: enrichedChallenge,
             myParticipant: myParticipant || null,
             acceptedCount,
         });
@@ -711,7 +735,7 @@ exports.getWaitingRoom = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            challenge,
+            challenge: await enrichChallengeCreatorXp(challenge),
             participants,
             acceptedCount,
             totalSlots,
@@ -1079,7 +1103,8 @@ exports.getMyChallenges = async (req, res) => {
             }
         }
 
-        // ── Paginate ─────────────────────────────────────────────────────────
+        // ── Enrich creator XP then paginate ──────────────────────────────────
+        resultList = await enrichChallengesCreatorXp(resultList);
         const totalItems = resultList.length;
         const totalPages = Math.ceil(totalItems / pageSize) || 1;
         const items = resultList.slice(skip, skip + pageSize);
@@ -1331,13 +1356,15 @@ exports.completeChallenge = async (req, res) => {
             userId,
         });
 
+        const enrichedPopulated = await enrichChallengeCreatorXp(populated);
+
         res.status(200).json({
             success: true,
             message: "Challenge completed",
-            challenge: populated,
+            challenge: enrichedPopulated,
             leaderboard: finalLeaderboard,
             myResult: updatedMyParticipant,
-            isWinner: populated.winner?._id.toString() === userId,
+            isWinner: enrichedPopulated.winner?._id.toString() === userId,
             xpEarned: updatedMyParticipant?.xpEarned || 0,
         });
     } catch (error) {
@@ -1421,7 +1448,7 @@ exports.getMyActiveChallenge = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            challenge,
+            challenge: await enrichChallengeCreatorXp(challenge),
             myParticipant,
             myStats: myParticipant?.challengeBoardStats || {
                 totalCigarettesAvoided: 0,

@@ -857,6 +857,25 @@ exports.getAllUsers = async (req, res) => {
             .skip(skip)
             .limit(limit);
 
+        const userIds = users.map((u) => u._id);
+        const progressList = await UserProgress.find({ userId: { $in: userIds } })
+            .select("userId xp level challengesCompleted totalWins totalLosses");
+
+        const progressMap = {};
+        progressList.forEach((p) => { progressMap[p.userId.toString()] = p; });
+
+        const results = users.map((u) => {
+            const progress = progressMap[u._id.toString()];
+            return {
+                ...u.toObject(),
+                xp:                  progress?.xp                  ?? 0,
+                level:               progress?.level               ?? 1,
+                challengesCompleted: progress?.challengesCompleted ?? 0,
+                totalWins:           progress?.totalWins           ?? 0,
+                totalLosses:         progress?.totalLosses         ?? 0,
+            };
+        });
+
         res.status(200).json({
             success: true,
             pagination: {
@@ -864,8 +883,8 @@ exports.getAllUsers = async (req, res) => {
                 totalPages,
                 totalItems,
                 pageSize: limit,
-                itemsCount: users.length,
-                results: users,
+                itemsCount: results.length,
+                results,
             },
         });
     } catch (error) {

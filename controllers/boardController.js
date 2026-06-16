@@ -8,6 +8,7 @@ const UserProgress = require("../models/UserProgress");
 const Badges = require("../models/Badges");
 const ChallengeParticipant = require("../models/ChallengeParticipant");
 const Challenge = require("../models/Challenges");
+const { enrichChallengeCreatorXp } = require("../utils/challengeUtils");
 const isDuplicateKeyError = (error) => error && error.code === 11000;
 
 // ─── Constants ───
@@ -906,7 +907,7 @@ exports.getChallengeBoard = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            challenge,
+            challenge: await enrichChallengeCreatorXp(challenge),
             challengeBoard,
             participant,
             timeLeftMs,
@@ -1078,7 +1079,7 @@ exports.getChallengeBoardSummary = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            challenge,
+            challenge: await enrichChallengeCreatorXp(challenge),
             myBoards,
             myStats: myParticipant.challengeBoardStats,
             standings,
