@@ -11,6 +11,18 @@ const Challenge = require("../models/Challenges");
 const { enrichChallengeCreatorXp } = require("../utils/challengeUtils");
 const isDuplicateKeyError = (error) => error && error.code === 11000;
 
+// Extends an existing challenge board's smokes array to match boardSize if it was
+// created with the old logic (cigarettes_per_day). Preserves all recorded slots.
+const syncChallengeBoardSize = async (board, boardSize) => {
+    if (board.smokes.length < boardSize) {
+        const extra = boardSize - board.smokes.length;
+        board.smokes.push(...new Array(extra).fill(null));
+        board.markModified("smokes");
+        await board.save();
+    }
+    return board;
+};
+
 // ─── Constants ───
 const LIFE_REGAINED_PER_CIGARETTE = 11; // minutes of life regained per cigarette avoided
 
@@ -248,6 +260,8 @@ exports.getTodayBoard = async (req, res) => {
                         });
                         if (!challengeBoard) throw error;
                     }
+                } else {
+                    challengeBoard = await syncChallengeBoardSize(challengeBoard, activeChallenge.boardSize);
                 }
             }
         }
@@ -320,6 +334,8 @@ exports.markSlot = async (req, res) => {
                         if (!isDuplicateKeyError(err)) throw err;
                         challengeBoard = await DailyBoard.findOne({ challengeId: activeChallenge._id, userId, date: todayUTC });
                     }
+                } else {
+                    challengeBoard = await syncChallengeBoardSize(challengeBoard, activeChallenge.boardSize);
                 }
             }
         }
@@ -884,6 +900,8 @@ exports.getChallengeBoard = async (req, res) => {
                 date: todayUTC,
                 smokes: new Array(challenge.boardSize).fill(null),
             });
+        } else {
+            challengeBoard = await syncChallengeBoardSize(challengeBoard, challenge.boardSize);
         }
 
         const timeLeftMs = challenge.endsAt
@@ -972,6 +990,8 @@ exports.markChallengeSlot = async (req, res) => {
                 date: todayUTC,
                 smokes: new Array(challenge.boardSize).fill(null),
             });
+        } else {
+            challengeBoard = await syncChallengeBoardSize(challengeBoard, challenge.boardSize);
         }
 
         if (index >= challengeBoard.smokes.length) {
