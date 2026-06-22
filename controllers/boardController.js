@@ -213,7 +213,7 @@ exports.getTodayBoard = async (req, res) => {
                 _id: { $in: challengeIds },
                 status: "active",
                 moderationStatus: "ok",
-            }).select("_id title durationDays boardSize endsAt startAt");
+            }).select("_id durationDays boardSize endsAt startAt");
 
             if (activeChallenge) {
                 const todayUTC = getTodayDate();
@@ -255,9 +255,10 @@ exports.getTodayBoard = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            dailyBoard: challengeBoard ? challengeBoard : dailyBoard,
-            lifetimeStats,
+            personalBoard: dailyBoard,
+            challengeBoard: challengeBoard || null,
             activeChallenge: activeChallenge || null,
+            lifetimeStats,
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -278,21 +279,86 @@ exports.markSlot = async (req, res) => {
             return res.status(400).json({ success: false, message: "Status must be 'smoked' or 'unsmoked'" });
         }
 
-        const { dailyBoard, user } = await ensureTodayBoard(userId);
+        const { dailyBoard: personalBoard, user } = await ensureTodayBoard(userId);
 
-        if (index >= dailyBoard.smokes.length) {
-            return res.status(400).json({ success: false, message: `Index out of range. Max index: ${dailyBoard.smokes.length - 1}` });
+        if (index >= personalBoard.smokes.length) {
+            return res.status(400).json({ success: false, message: `Index out of range. Max index: ${personalBoard.smokes.length - 1}` });
         }
 
-        // ── Update personal daily board slot (challengeId = null) ──────────────
-        dailyBoard.smokes[index] = status;
-        dailyBoard.markModified("smokes");
-
         const costPerCigarette = getCostPerCigarette(user);
-        recalculateDailyStats(dailyBoard, costPerCigarette);
-        await dailyBoard.save();
+        const todayUTC = getTodayDate();
 
-        // Update monthly board stats
+        // ── Step 1: Find active challenge and update challenge board first ────────
+        const myParticipations = await ChallengeParticipant.find({
+            userId,
+            inviteStatus: "accepted",
+        }).select("challengeId");
+
+        let activeChallenge = null;
+        let challengeBoard = null;
+
+        if (myParticipations.length) {
+            const challengeIds = myParticipations.map((p) => p.challengeId);
+            activeChallenge = await Challenge.findOne({
+                _id: { $in: challengeIds },
+                status: "active",
+                moderationStatus: "ok",
+            }).select("_id durationDays boardSize endsAt startAt");
+
+            if (activeChallenge) {
+                challengeBoard = await DailyBoard.findOne({
+                    challengeId: activeChallenge._id,
+                    userId,
+                    date: todayUTC,
+                });
+
+                if (!challengeBoard) {
+                    const existingCount = await DailyBoard.countDocuments({ challengeId: activeChallenge._id, userId });
+                    try {
+                        challengeBoard = await DailyBoard.create({
+                            challengeId: activeChallenge._id,
+                            userId,
+                            day: existingCount + 1,
+                            date: todayUTC,
+                            smokes: new Array(user.cigarettes_per_day || 1).fill(null),
+                        });
+                    } catch (err) {
+                        if (!isDuplicateKeyError(err)) throw err;
+                        challengeBoard = await DailyBoard.findOne({ challengeId: activeChallenge._id, userId, date: todayUTC });
+                    }
+                }
+
+                if (challengeBoard && index < challengeBoard.smokes.length) {
+                    challengeBoard.smokes[index] = status;
+                    challengeBoard.markModified("smokes");
+                    recalculateDailyStats(challengeBoard, costPerCigarette);
+                    await challengeBoard.save();
+
+                    // Roll up to ChallengeParticipant aggregate stats
+                    const allChallengeDays = await DailyBoard.find({ challengeId: activeChallenge._id, userId });
+                    const totalAvoided = allChallengeDays.reduce((s, d) => s + d.cigarettesAvoided, 0);
+                    const totalSmoked  = allChallengeDays.reduce((s, d) => s + d.cigarettesSmoked,  0);
+                    const daysFilled   = allChallengeDays.filter((d) => d.smokes.some((slot) => slot !== null)).length;
+
+                    await ChallengeParticipant.findOneAndUpdate(
+                        { challengeId: activeChallenge._id, userId },
+                        {
+                            "challengeBoardStats.totalCigarettesAvoided": totalAvoided,
+                            "challengeBoardStats.totalCigarettesSmoked":  totalSmoked,
+                            "challengeBoardStats.totalDaysFilled":        daysFilled,
+                        }
+                    );
+                }
+            }
+        }
+
+        // ── Step 2: Always mirror to personal daily board ─────────────────────────
+        personalBoard.smokes[index] = status;
+        personalBoard.markModified("smokes");
+        recalculateDailyStats(personalBoard, costPerCigarette);
+        await personalBoard.save();
+
+        // Update monthly board stats and overview
         const today = getTodayDate();
         const month = today.getUTCMonth() + 1;
         const year  = today.getUTCFullYear();
@@ -301,7 +367,7 @@ exports.markSlot = async (req, res) => {
         if (monthlyBoard) {
             await recalculateMonthlyStats(monthlyBoard);
             await monthlyBoard.save();
-            await updateOverview(userId, dailyBoard, monthlyBoard);
+            await updateOverview(userId, personalBoard, monthlyBoard);
         }
 
         const allMonthlyBoards = await MonthlyBoard.find({ userId });
@@ -312,92 +378,13 @@ exports.markSlot = async (req, res) => {
             totalMoneySaved:        parseFloat(allMonthlyBoards.reduce((sum, mb) => sum + mb.totalMoneySaved, 0).toFixed(2)),
         };
 
-        // ── Also update active challenge boards (challengeId = <id>) ────────────
-        const myParticipations = await ChallengeParticipant.find({
-            userId,
-            inviteStatus: "accepted",
-        }).select("challengeId");
-
-        if (myParticipations.length) {
-            const challengeIds = myParticipations.map((p) => p.challengeId);
-            const activeChallenges = await Challenge.find({
-                _id: { $in: challengeIds },
-                status: "active",
-                moderationStatus: "ok",
-            }).select("_id");
-
-            for (const ch of activeChallenges) {
-                const todayUTC = getTodayDate();
-
-                let challengeBoard = await DailyBoard.findOne({
-                    challengeId: ch._id,
-                    userId,
-                    date: todayUTC,
-                });
-
-                if (!challengeBoard) {
-                    const existingCount = await DailyBoard.countDocuments({ challengeId: ch._id, userId });
-                    challengeBoard = await DailyBoard.create({
-                        challengeId: ch._id,
-                        userId,
-                        day: existingCount + 1,
-                        date: todayUTC,
-                        smokes: new Array(user.cigarettes_per_day || 1).fill(null),
-                    });
-                }
-
-                if (index >= challengeBoard.smokes.length) continue;
-
-                challengeBoard.smokes[index] = status;
-                challengeBoard.markModified("smokes");
-                recalculateDailyStats(challengeBoard, costPerCigarette);
-                await challengeBoard.save();
-
-                // Roll up aggregate stats to ChallengeParticipant
-                const allChallengeDays = await DailyBoard.find({ challengeId: ch._id, userId });
-                const totalAvoided = allChallengeDays.reduce((s, d) => s + d.cigarettesAvoided, 0);
-                const totalSmoked  = allChallengeDays.reduce((s, d) => s + d.cigarettesSmoked,  0);
-                const daysFilled   = allChallengeDays.filter((d) => d.smokes.some((slot) => slot !== null)).length;
-
-                await ChallengeParticipant.findOneAndUpdate(
-                    { challengeId: ch._id, userId },
-                    {
-                        "challengeBoardStats.totalCigarettesAvoided": totalAvoided,
-                        "challengeBoardStats.totalCigarettesSmoked":  totalSmoked,
-                        "challengeBoardStats.totalDaysFilled":        daysFilled,
-                    }
-                );
-            }
-        }
-
-        // ── Build response matching getTodayBoard format ───────────────────────
-        let activeChallenge = null;
-        let activeChallengeBoard = null;
-
-        if (myParticipations.length) {
-            const challengeIds = myParticipations.map((p) => p.challengeId);
-            activeChallenge = await Challenge.findOne({
-                _id: { $in: challengeIds },
-                status: "active",
-                moderationStatus: "ok",
-            }).select("_id title durationDays boardSize endsAt startAt");
-
-            if (activeChallenge) {
-                const todayUTC = getTodayDate();
-                activeChallengeBoard = await DailyBoard.findOne({
-                    challengeId: activeChallenge._id,
-                    userId,
-                    date: todayUTC,
-                });
-            }
-        }
-
         res.status(200).json({
             success: true,
             message: "Slot updated successfully",
-            dailyBoard: activeChallengeBoard ? activeChallengeBoard : dailyBoard,
-            lifetimeStats,
+            personalBoard,
+            challengeBoard: challengeBoard || null,
             activeChallenge: activeChallenge || null,
+            lifetimeStats,
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -853,8 +840,7 @@ exports.getChallengeBoard = async (req, res) => {
         const { challengeId } = req.params;
 
         const challenge = await Challenge.findById(challengeId)
-            .populate("createdBy", "name profile_picture")
-            .populate("category", "name");
+            .populate("createdBy", "name profile_picture");
         if (!challenge) {
             return res.status(404).json({ success: false, message: "Challenge not found" });
         }
@@ -1035,7 +1021,6 @@ exports.getChallengeBoardSummary = async (req, res) => {
 
         const challenge = await Challenge.findById(challengeId)
             .populate("createdBy", "name profile_picture")
-            .populate("category", "name")
             .populate("winner", "name profile_picture");
         if (!challenge) {
             return res.status(404).json({ success: false, message: "Challenge not found" });

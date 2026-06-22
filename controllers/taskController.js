@@ -274,7 +274,7 @@ exports.assignChallengeTask = async (req, res) => {
         await sendNotificationToUsers(
             assignedTo,
             "New Task Assigned! 📋",
-            `${winner?.name || "The winner"} assigned you task(s) from the challenge "${challenge.title}"`,
+            `${winner?.name || "The winner"} assigned you task(s) from the challenge`,
             { type: "challenge_task_assigned", challengeId: challengeId.toString() }
         );
 

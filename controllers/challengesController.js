@@ -47,6 +47,22 @@ const getTodayUTC = () => {
 };
 
 /**
+ * Helper: Calculate the end of the last calendar day of a challenge.
+ * A 1-day challenge starting at 5 PM ends at 23:59:59 UTC that same night.
+ * A 3-day challenge starting June 11 ends at 23:59:59 UTC on June 13.
+ */
+const getEndOfLastDay = (startAt, durationDays) => {
+    const d = new Date(Date.UTC(
+        startAt.getUTCFullYear(),
+        startAt.getUTCMonth(),
+        startAt.getUTCDate()
+    ));
+    d.setUTCDate(d.getUTCDate() + durationDays - 1);
+    d.setUTCHours(23, 59, 59, 999);
+    return d;
+};
+
+/**
  * Helper: Check if a user is already an accepted participant in any active challenge.
  */
 const hasActiveChallenge = async (userId) => {
@@ -63,9 +79,9 @@ const hasActiveChallenge = async (userId) => {
         _id: { $in: challengeIds },
         status: "active",
         moderationStatus: "ok",
-    }).select("_id title");
+    }).select("_id");
 
-    return activeChallenge || null; // returns the active challenge or null
+    return activeChallenge || null;
 };
 
 /**
@@ -126,9 +142,10 @@ const tryAutoActivate = async (challenge) => {
         );
     }
 
+    const now = new Date();
     challenge.status = "active";
-    challenge.startAt = new Date();
-    challenge.endsAt = new Date(Date.now() + duration * 24 * 60 * 60 * 1000);
+    challenge.startAt = now;
+    challenge.endsAt = getEndOfLastDay(now, duration);
     await challenge.save();
 
     await createChallengeBoardsForParticipants(challenge);
@@ -161,7 +178,7 @@ const awardXPToParticipants = async (challenge) => {
         await sendNotificationToUsers(
             [p.userId.toString()],
             "Challenge Complete! 🏆",
-            `${challenge.title} has ended. +${xp} XP earned!`,
+            `Your challenge has ended. +${xp} XP earned!`,
             { type: "challenge_completed", challengeId: challenge._id.toString() }
         );
     }
@@ -180,7 +197,6 @@ exports.getChallengeById = async (req, res) => {
 
         const challenge = await Challenge.findById(id)
             .populate("createdBy", "name profile_picture")
-            .populate("category", "name")
             .populate("winner", "name profile_picture");
 
         if (!challenge || challenge.moderationStatus === "removed") {
@@ -227,7 +243,7 @@ exports.createChallenge = async (req, res) => {
         if (existingActive) {
             return res.status(400).json({
                 success: false,
-                message: `You already have an active challenge ("${existingActive.title}"). Please complete or wait for it to end before creating a new one.`,
+                message: "You already have an active challenge. Please complete or wait for it to end before creating a new one.",
                 activeChallengeId: existingActive._id,
             });
         }
@@ -235,13 +251,10 @@ exports.createChallenge = async (req, res) => {
             mode,
             sourceType,
             templateId,
-            title,
-            category,
             durationDays,
             boardSize,
             xpReward,
             description,
-            rules,
         } = req.body;
 
         // Validate mode
@@ -284,35 +297,15 @@ exports.createChallenge = async (req, res) => {
             challengeData = {
                 ...challengeData,
                 templateId: template._id,
-                title: template.title,
-                category: template.category,
                 durationDays: template.durationDays,
                 boardSize: template.boardSize || 50,
-                // Creator can override XP from the template default
                 xpReward: xpReward !== undefined ? Number(xpReward) : template.xpReward,
                 description: template.description || "",
-                rules: template.rules || "",
             };
-
-            if (template.category) {
-                const templateCategoryExists = await Category.exists({ _id: template.category });
-                if (!templateCategoryExists) {
-                    return res.status(400).json({
-                        success: false,
-                        message: "Template category is invalid or has been deleted",
-                    });
-                }
-            }
         }
 
         // ── Custom: use fields from request body ───────────────────────────
         if (sourceType === "custom") {
-            if (!title || !title.trim()) {
-                return res.status(400).json({
-                    success: false,
-                    message: "title is required for custom challenges",
-                });
-            }
             if (!durationDays || isNaN(durationDays) || Number(durationDays) < 1) {
                 return res.status(400).json({
                     success: false,
@@ -320,23 +313,12 @@ exports.createChallenge = async (req, res) => {
                 });
             }
 
-            const categoryValidation = await ensureValidCategory(category);
-            if (!categoryValidation.valid) {
-                return res.status(400).json({
-                    success: false,
-                    message: categoryValidation.message,
-                });
-            }
-
             challengeData = {
                 ...challengeData,
-                title: title.trim(),
-                category,
                 durationDays: Number(durationDays),
                 boardSize: boardSize ? Number(boardSize) : 50,
                 xpReward: xpReward ? Number(xpReward) : 50,
                 description: description || "",
-                rules: rules || "",
             };
         }
 
@@ -352,8 +334,7 @@ exports.createChallenge = async (req, res) => {
         });
 
         const populated = await Challenge.findById(challenge._id)
-            .populate("createdBy", "name profile_picture")
-            .populate("category", "name");
+            .populate("createdBy", "name profile_picture");
 
         return res.status(201).json({
             success: true,
@@ -463,7 +444,7 @@ exports.invitePlayers = async (req, res) => {
         await sendNotificationToUsers(
             allInvited,
             "You've been challenged! 🏆",
-            `${creator?.name || "Someone"} challenged you: ${challenge.title}`,
+            `${creator?.name || "Someone"} has challenged you!`,
             { type: "challenge_invite", challengeId: challenge._id.toString() }
         );
 
@@ -505,10 +486,6 @@ exports.getMyInvites = async (req, res) => {
             .populate({
                 path: "challengeId",
                 populate: { path: "createdBy", select: "name profile_picture" },
-            })
-            .populate({
-                path: "challengeId",
-                populate: { path: "category", select: "name" },
             })
             .skip(skip)
             .limit(pageSize)
@@ -568,7 +545,6 @@ exports.getChallengeDetail = async (req, res) => {
 
         const challenge = await Challenge.findById(id)
             .populate("createdBy", "name profile_picture")
-            .populate("category", "name")
             .populate("winner", "name profile_picture");
 
         if (!challenge) {
@@ -669,7 +645,7 @@ exports.respondToInvite = async (req, res) => {
 
                 return res.status(400).json({
                     success: false,
-                    message: `You already have an active challenge ("${existingActive.title}"). You cannot join another until it ends.`,
+                    message: "You already have an active challenge. You cannot join another until it ends.",
                     activeChallengeId: existingActive._id,
                 });
             }
@@ -686,7 +662,7 @@ exports.respondToInvite = async (req, res) => {
                 await sendNotificationToUsers(
                     accepted.map((p) => p.userId.toString()),
                     "Challenge Started! 🚀",
-                    `${challenge.title} is now active. Give it your best!`,
+                    "Your challenge is now active. Give it your best!",
                     { type: "challenge_started", challengeId: challenge._id.toString() }
                 );
             }
@@ -711,8 +687,7 @@ exports.getWaitingRoom = async (req, res) => {
         const userId = req.user.id;
 
         const challenge = await Challenge.findById(id)
-            .populate("createdBy", "name profile_picture")
-            .populate("category", "name");
+            .populate("createdBy", "name profile_picture");
         if (!challenge) {
             return res.status(404).json({ success: false, message: "Challenge not found" });
         }
@@ -752,7 +727,7 @@ exports.getCreatorMonitor = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const challenge = await Challenge.findById(id).populate("category", "name");
+        const challenge = await Challenge.findById(id);
         if (!challenge) {
             return res.status(404).json({ success: false, message: "Challenge not found" });
         }
@@ -825,7 +800,7 @@ exports.remindInvitee = async (req, res) => {
         await sendNotificationToUsers(
             targetUserIds,
             "Challenge Reminder 🔔",
-            `${creator?.name || "Your friend"} is waiting: ${challenge.title}`,
+            `${creator?.name || "Your friend"} is waiting for you to respond to the challenge!`,
             { type: "challenge_reminder", challengeId: id }
         );
 
@@ -879,9 +854,10 @@ exports.startChallenge = async (req, res) => {
             });
         }
 
+        const now = new Date();
         challenge.status = "active";
-        challenge.startAt = new Date();
-        challenge.endsAt = new Date(Date.now() + challenge.durationDays * 24 * 60 * 60 * 1000);
+        challenge.startAt = now;
+        challenge.endsAt = getEndOfLastDay(now, challenge.durationDays);
         await challenge.save();
 
         // Create day-1 challenge boards for all accepted participants
@@ -896,7 +872,7 @@ exports.startChallenge = async (req, res) => {
         await sendNotificationToUsers(
             accepted.map((p) => p.userId.toString()),
             "Challenge Started! 🚀",
-            `${challenge.title} has started. Give it your best!`,
+            "Your challenge has started. Give it your best!",
             { type: "challenge_started", challengeId: challenge._id.toString() }
         );
 
@@ -947,7 +923,7 @@ exports.cancelChallenge = async (req, res) => {
             await sendNotificationToUsers(
                 invitees.map((p) => p.userId.toString()),
                 "Challenge Cancelled",
-                `The challenge "${challenge.title}" has been cancelled.`,
+                "The challenge has been cancelled.",
                 { type: "challenge_cancelled", challengeId: id }
             );
         }
@@ -985,7 +961,6 @@ exports.getMyChallenges = async (req, res) => {
 
         const populateOpts = [
             { path: "createdBy", select: "name profile_picture" },
-            { path: "category", select: "name" },
             { path: "winner", select: "name profile_picture" },
         ];
 
@@ -1159,7 +1134,7 @@ exports.logProgress = async (req, res) => {
             });
         }
 
-        const challenge = await Challenge.findById(id).populate("category", "name");
+        const challenge = await Challenge.findById(id);
         if (!challenge) {
             return res.status(404).json({ success: false, message: "Challenge not found" });
         }
@@ -1288,8 +1263,7 @@ exports.completeChallenge = async (req, res) => {
         const userId = req.user.id;
 
         const challenge = await Challenge.findById(id)
-            .populate("createdBy", "name profile_picture")
-            .populate("category", "name");
+            .populate("createdBy", "name profile_picture");
         if (!challenge) {
             return res.status(404).json({ success: false, message: "Challenge not found" });
         }
@@ -1340,7 +1314,6 @@ exports.completeChallenge = async (req, res) => {
         // Return final results
         const populated = await Challenge.findById(id)
             .populate("createdBy", "name profile_picture")
-            .populate("category", "name")
             .populate("winner", "name profile_picture");
 
         const finalLeaderboard = await ChallengeParticipant.find({
@@ -1401,7 +1374,6 @@ exports.getMyActiveChallenge = async (req, res) => {
             moderationStatus: "ok",
         })
             .populate("createdBy", "name profile_picture")
-            .populate("category", "name")
             .populate("winner", "name profile_picture");
 
         if (!challenge) {
@@ -1567,7 +1539,6 @@ exports.getMatchHistory = async (req, res) => {
 
             return {
                 challengeId: challenge._id,
-                title: challenge.title,
                 mode: challenge.mode,
                 createdAt: challenge.createdAt,
                 startAt: challenge.startAt,

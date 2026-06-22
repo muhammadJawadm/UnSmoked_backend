@@ -79,7 +79,7 @@ async function autoCompleteChallenges() {
             await sendNotificationToUsers(
                 playerIds,
                 "Challenge Ended! 🏆",
-                `${challenge.title} has completed. Check your results!`,
+                "Your challenge has completed. Check your results!",
                 { type: "challenge_completed", challengeId: challenge._id.toString() }
             );
 

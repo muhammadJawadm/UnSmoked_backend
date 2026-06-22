@@ -637,7 +637,6 @@ exports.getAllChallenges = async (req, res) => {
         const [challenges, total] = await Promise.all([
             Challenge.find(filter)
                 .populate("createdBy", "name email profile_picture")
-                .populate("category",  "name")
                 .populate("winner",    "name email profile_picture")
                 .sort({ createdAt: -1 })
                 .skip(skip)
@@ -976,7 +975,6 @@ exports.getChallengeDetail = async (req, res) => {
     try {
         const challenge = await Challenge.findById(req.params.id)
             .populate("createdBy", "name email profile_picture")
-            .populate("category",  "name")
             .populate("templateId", "title description")
             .populate("winner",    "name email profile_picture");
 
