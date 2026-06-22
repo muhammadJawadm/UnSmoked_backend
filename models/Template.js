@@ -5,7 +5,6 @@ const TemplateSchema = new mongoose.Schema(
     {
         title: { type: String, required: true, trim: true },
         description: { type: String, default: "" },
-        rules: { type: String, default: "" },          // NEW: challenge rules / how to play
         category: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Category",

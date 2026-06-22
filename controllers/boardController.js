@@ -226,18 +226,17 @@ exports.getTodayBoard = async (req, res) => {
                 });
 
                 if (!challengeBoard) {
-                    const existingCount = await DailyBoard.countDocuments({ 
-                        challengeId: activeChallenge._id, 
-                        userId 
+                    const existingCount = await DailyBoard.countDocuments({
+                        challengeId: activeChallenge._id,
+                        userId
                     });
-                    const cigarettesPerDay = (user && user.cigarettes_per_day > 0) ? user.cigarettes_per_day : 1;
                     try {
                         challengeBoard = await DailyBoard.create({
                             challengeId: activeChallenge._id,
                             userId,
                             day: existingCount + 1,
                             date: todayUTC,
-                            smokes: new Array(cigarettesPerDay).fill(null),
+                            smokes: new Array(activeChallenge.boardSize).fill(null),
                         });
                     } catch (error) {
                         if (!isDuplicateKeyError(error)) throw error;
@@ -280,15 +279,10 @@ exports.markSlot = async (req, res) => {
         }
 
         const { dailyBoard: personalBoard, user } = await ensureTodayBoard(userId);
-
-        if (index >= personalBoard.smokes.length) {
-            return res.status(400).json({ success: false, message: `Index out of range. Max index: ${personalBoard.smokes.length - 1}` });
-        }
-
         const costPerCigarette = getCostPerCigarette(user);
         const todayUTC = getTodayDate();
 
-        // ── Step 1: Find active challenge and update challenge board first ────────
+        // ── Step 1: Find active challenge and its board first ─────────────────────
         const myParticipations = await ChallengeParticipant.find({
             userId,
             inviteStatus: "accepted",
@@ -320,54 +314,64 @@ exports.markSlot = async (req, res) => {
                             userId,
                             day: existingCount + 1,
                             date: todayUTC,
-                            smokes: new Array(user.cigarettes_per_day || 1).fill(null),
+                            smokes: new Array(activeChallenge.boardSize).fill(null),
                         });
                     } catch (err) {
                         if (!isDuplicateKeyError(err)) throw err;
                         challengeBoard = await DailyBoard.findOne({ challengeId: activeChallenge._id, userId, date: todayUTC });
                     }
                 }
-
-                if (challengeBoard && index < challengeBoard.smokes.length) {
-                    challengeBoard.smokes[index] = status;
-                    challengeBoard.markModified("smokes");
-                    recalculateDailyStats(challengeBoard, costPerCigarette);
-                    await challengeBoard.save();
-
-                    // Roll up to ChallengeParticipant aggregate stats
-                    const allChallengeDays = await DailyBoard.find({ challengeId: activeChallenge._id, userId });
-                    const totalAvoided = allChallengeDays.reduce((s, d) => s + d.cigarettesAvoided, 0);
-                    const totalSmoked  = allChallengeDays.reduce((s, d) => s + d.cigarettesSmoked,  0);
-                    const daysFilled   = allChallengeDays.filter((d) => d.smokes.some((slot) => slot !== null)).length;
-
-                    await ChallengeParticipant.findOneAndUpdate(
-                        { challengeId: activeChallenge._id, userId },
-                        {
-                            "challengeBoardStats.totalCigarettesAvoided": totalAvoided,
-                            "challengeBoardStats.totalCigarettesSmoked":  totalSmoked,
-                            "challengeBoardStats.totalDaysFilled":        daysFilled,
-                        }
-                    );
-                }
             }
         }
 
-        // ── Step 2: Always mirror to personal daily board ─────────────────────────
-        personalBoard.smokes[index] = status;
-        personalBoard.markModified("smokes");
-        recalculateDailyStats(personalBoard, costPerCigarette);
-        await personalBoard.save();
+        // ── Bounds check: challenge board size when active, personal board size otherwise ──
+        const activeBoard = challengeBoard || personalBoard;
+        const maxIndex = activeBoard.smokes.length - 1;
+        if (index > maxIndex) {
+            return res.status(400).json({ success: false, message: `Index out of range. Max index: ${maxIndex}` });
+        }
 
-        // Update monthly board stats and overview
-        const today = getTodayDate();
-        const month = today.getUTCMonth() + 1;
-        const year  = today.getUTCFullYear();
+        // ── Step 2: Update challenge board (primary when active) ──────────────────
+        if (challengeBoard) {
+            challengeBoard.smokes[index] = status;
+            challengeBoard.markModified("smokes");
+            recalculateDailyStats(challengeBoard, costPerCigarette);
+            await challengeBoard.save();
 
-        const monthlyBoard = await MonthlyBoard.findOne({ userId, month, year });
-        if (monthlyBoard) {
-            await recalculateMonthlyStats(monthlyBoard);
-            await monthlyBoard.save();
-            await updateOverview(userId, personalBoard, monthlyBoard);
+            // Roll up to ChallengeParticipant aggregate stats
+            const allChallengeDays = await DailyBoard.find({ challengeId: activeChallenge._id, userId });
+            const totalAvoided = allChallengeDays.reduce((s, d) => s + d.cigarettesAvoided, 0);
+            const totalSmoked  = allChallengeDays.reduce((s, d) => s + d.cigarettesSmoked,  0);
+            const daysFilled   = allChallengeDays.filter((d) => d.smokes.some((slot) => slot !== null)).length;
+
+            await ChallengeParticipant.findOneAndUpdate(
+                { challengeId: activeChallenge._id, userId },
+                {
+                    "challengeBoardStats.totalCigarettesAvoided": totalAvoided,
+                    "challengeBoardStats.totalCigarettesSmoked":  totalSmoked,
+                    "challengeBoardStats.totalDaysFilled":        daysFilled,
+                }
+            );
+        }
+
+        // ── Step 3: Mirror to personal board (only if index fits its size) ────────
+        if (index < personalBoard.smokes.length) {
+            personalBoard.smokes[index] = status;
+            personalBoard.markModified("smokes");
+            recalculateDailyStats(personalBoard, costPerCigarette);
+            await personalBoard.save();
+
+            // Update monthly board stats and overview only when personal board changed
+            const today = getTodayDate();
+            const month = today.getUTCMonth() + 1;
+            const year  = today.getUTCFullYear();
+
+            const monthlyBoard = await MonthlyBoard.findOne({ userId, month, year });
+            if (monthlyBoard) {
+                await recalculateMonthlyStats(monthlyBoard);
+                await monthlyBoard.save();
+                await updateOverview(userId, personalBoard, monthlyBoard);
+            }
         }
 
         const allMonthlyBoards = await MonthlyBoard.find({ userId });
@@ -873,13 +877,12 @@ exports.getChallengeBoard = async (req, res) => {
 
         if (!challengeBoard) {
             const existingCount = await DailyBoard.countDocuments({ challengeId, userId });
-            const cigarettesPerDay = (user.cigarettes_per_day > 0) ? user.cigarettes_per_day : 1;
             challengeBoard = await DailyBoard.create({
                 challengeId,
                 userId,
                 day: existingCount + 1,
                 date: todayUTC,
-                smokes: new Array(cigarettesPerDay).fill(null),
+                smokes: new Array(challenge.boardSize).fill(null),
             });
         }
 
@@ -962,14 +965,12 @@ exports.markChallengeSlot = async (req, res) => {
 
         if (!challengeBoard) {
             const existingCount = await DailyBoard.countDocuments({ challengeId, userId });
-            const cigarettesPerDay = (user.cigarettes_per_day > 0) ? user.cigarettes_per_day : 1;
-            const smokes = new Array(cigarettesPerDay).fill(null);
             challengeBoard = await DailyBoard.create({
                 challengeId,
                 userId,
                 day: existingCount + 1,
                 date: todayUTC,
-                smokes,
+                smokes: new Array(challenge.boardSize).fill(null),
             });
         }
 

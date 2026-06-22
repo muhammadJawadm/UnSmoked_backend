@@ -97,9 +97,7 @@ const createChallengeBoardsForParticipants = async (challenge) => {
     const today = getTodayUTC();
 
     for (const p of accepted) {
-        const user = await User.findById(p.userId).select("cigarettes_per_day");
-        const cigarettesPerDay = (user && user.cigarettes_per_day > 0) ? user.cigarettes_per_day : 1;
-        const smokes = new Array(cigarettesPerDay).fill(null);
+        const smokes = new Array(challenge.boardSize).fill(null);
 
         // upsert — safe to call multiple times
         await DailyBoard.findOneAndUpdate(

@@ -1396,12 +1396,12 @@ exports.deleteHealthBody = async (req, res) => {
 
 exports.createTemplate = async (req, res) => {
     try {
-        const { title, description, category, durationDays, boardSize, xpReward, isActive, isCustom, rules } = req.body;
+        const { title, description, category, durationDays, boardSize, xpReward, isActive, isCustom } = req.body;
         if (!title) return res.status(400).json({ success: false, message: "title is required" });
         if (!category || !mongoose.Types.ObjectId.isValid(category)) return res.status(400).json({ success: false, message: "Valid category id is required" });
         if (durationDays !== undefined && durationDays < 1) return res.status(400).json({ success: false, message: "durationDays must be at least 1" });
         if (xpReward !== undefined && xpReward < 0) return res.status(400).json({ success: false, message: "xpReward cannot be negative" });
-        const template = await Template.create({ title, description, category, durationDays, boardSize, xpReward, isActive, isCustom, rules, createdBy: req.user.id });
+        const template = await Template.create({ title, description, category, durationDays, boardSize, xpReward, isActive, isCustom, createdBy: req.user.id });
         await template.populate("category", "name");
         res.status(201).json({ success: true, message: "Template created successfully", template });
     } catch (error) {
@@ -1411,8 +1411,8 @@ exports.createTemplate = async (req, res) => {
 
 exports.updateTemplate = async (req, res) => {
     try {
-        const { title, description, category, durationDays, boardSize, xpReward, isActive, isCustom, rules } = req.body;
-        const template = await Template.findByIdAndUpdate(req.params.id, { title, description, category, durationDays, boardSize, xpReward, isActive, isCustom, rules }, { new: true }).populate("category", "name");
+        const { title, description, category, durationDays, boardSize, xpReward, isActive, isCustom } = req.body;
+        const template = await Template.findByIdAndUpdate(req.params.id, { title, description, category, durationDays, boardSize, xpReward, isActive, isCustom }, { new: true }).populate("category", "name");
         if (!template) return res.status(404).json({ success: false, message: "Template not found" });
         res.status(200).json({ success: true, message: "Template updated successfully", template });
     } catch (error) {
