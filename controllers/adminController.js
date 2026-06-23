@@ -1,39 +1,33 @@
-const User                   = require("../models/User");
-const Post                   = require("../models/Post");
-const Blog                   = require("../models/Blog");
-const Comment                = require("../models/Comment");
-const Like                   = require("../models/Like");
-const Task                   = require("../models/Task");
-const Category               = require("../models/Category");
-const Milestone              = require("../models/Milestones");
-const UserMilestone          = require("../models/UserMilestone");
-const Faq                    = require("../models/Faq");
-const Feedback               = require("../models/Feedback");
-const Contact                = require("../models/Contact");
-const Chat                   = require("../models/Chat");
-const Message                = require("../models/Message");
-const MotivationalTip        = require("../models/MotivationalTip");
-const QuickWin               = require("../models/QuickWin");
-const HealthBody             = require("../models/HealthBody");
-const Notification           = require("../models/Notifications");
-const Template               = require("../models/Template");
-const Challenge              = require("../models/Challenges");
-const ChallengeParticipant   = require("../models/ChallengeParticipant");
+const User                    = require("../models/User");
+const Post                    = require("../models/Post");
+const Blog                    = require("../models/Blog");
+const Comment                 = require("../models/Comment");
+const Like                    = require("../models/Like");
+const Task                    = require("../models/Task");
+const Milestone               = require("../models/Milestones");
+const UserMilestone           = require("../models/UserMilestone");
+const Faq                     = require("../models/Faq");
+const Feedback                = require("../models/Feedback");
+const Contact                 = require("../models/Contact");
+const Chat                    = require("../models/Chat");
+const Message                 = require("../models/Message");
+const Notification            = require("../models/Notifications");
+const Template                = require("../models/Template");
+const Challenge               = require("../models/Challenges");
+const ChallengeParticipant    = require("../models/ChallengeParticipant");
 const ChallengeTaskAssignment = require("../models/ChallengeTaskAssignment");
-const Competition            = require("../models/Competition");
-const BadgeTemplate          = require("../models/BadgeTemplate");
-const Badges                 = require("../models/Badges");
-const PostReport             = require("../models/PostReport");
-const PostHide               = require("../models/PostHide");
-const UserProgress           = require("../models/UserProgress");
-const DailyBoard             = require("../models/DailyBoard");
-const MonthlyBoard           = require("../models/MonthlyBoard");
-const Board                  = require("../models/Board");
-const SmokeFreeMilestone     = require("../models/SmokeFreeMilestone");
-const Otp                    = require("../models/Otp");
-const UserOverview           = require("../models/UserOverview");
-const firebaseAdmin          = require("../utils/firebase");
-const mongoose               = require("mongoose");
+const Competition             = require("../models/Competition");
+const Badges                  = require("../models/Badges");
+const PostReport              = require("../models/PostReport");
+const PostHide                = require("../models/PostHide");
+const UserProgress            = require("../models/UserProgress");
+const DailyBoard              = require("../models/DailyBoard");
+const MonthlyBoard            = require("../models/MonthlyBoard");
+const Board                   = require("../models/Board");
+const Otp                     = require("../models/Otp");
+const UserOverview            = require("../models/UserOverview");
+const firebaseAdmin           = require("../utils/firebase");
+const mongoose                = require("mongoose");
 const { enrichChallengeCreatorXp, enrichChallengesCreatorXp } = require("../utils/challengeUtils");
 
 // ─── Pagination helper ────────────────────────────────────────────────────────
@@ -188,103 +182,6 @@ exports.getAllPosts = async (req, res) => {
     }
 };
 
-// ─── Blogs ────────────────────────────────────────────────────────────────────
-
-exports.getAllBlogs = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-
-        const [blogs, total] = await Promise.all([
-            Blog.find()
-                .populate("userId", "name email profile_picture")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            Blog.countDocuments(),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Blogs fetched successfully",
-            blogs,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Comments ─────────────────────────────────────────────────────────────────
-
-exports.getAllComments = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.targetType) filter.targetType = req.query.targetType;
-
-        const [comments, total] = await Promise.all([
-            Comment.find(filter)
-                .populate("userId", "name email profile_picture")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            Comment.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Comments fetched successfully",
-            comments,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Tasks ────────────────────────────────────────────────────────────────────
-
-exports.getAllTasks = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.is_custom !== undefined) filter.is_custom = req.query.is_custom === "true";
-
-        const [tasks, total] = await Promise.all([
-            Task.find(filter)
-                .populate("userId", "name email")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            Task.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Tasks fetched successfully",
-            tasks,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Categories ───────────────────────────────────────────────────────────────
-
-exports.getAllCategories = async (req, res) => {
-    try {
-        const categories = await Category.find().sort({ name: 1 });
-        res.status(200).json({
-            success: true,
-            message: "Categories fetched successfully",
-            categories,
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
 // ─── Milestones ───────────────────────────────────────────────────────────────
 
 exports.getAllMilestones = async (req, res) => {
@@ -299,55 +196,6 @@ exports.getAllMilestones = async (req, res) => {
         res.status(200).json({
             success: true,
             message: "Milestones fetched successfully",
-            milestones,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── User Milestones ──────────────────────────────────────────────────────────
-
-exports.getAllUserMilestones = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-
-        const [userMilestones, total] = await Promise.all([
-            UserMilestone.find()
-                .populate("userId",      "name email profile_picture")
-                .populate("milestoneId", "title description badge_image")
-                .sort({ achieved_at: -1 })
-                .skip(skip)
-                .limit(limit),
-            UserMilestone.countDocuments(),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "User milestones fetched successfully",
-            userMilestones,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Smoke-Free Milestones ────────────────────────────────────────────────────
-
-exports.getAllSmokeFreeMilestones = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-
-        const [milestones, total] = await Promise.all([
-            SmokeFreeMilestone.find().sort({ sort_order: 1 }).skip(skip).limit(limit),
-            SmokeFreeMilestone.countDocuments(),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Smoke-free milestones fetched successfully",
             milestones,
             pagination: paginationMeta(total, page, limit),
         });
@@ -431,134 +279,6 @@ exports.getAllContacts = async (req, res) => {
             success: true,
             message: "Contacts fetched successfully",
             contacts,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Chats ────────────────────────────────────────────────────────────────────
-
-exports.getAllChats = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-
-        const [chats, total] = await Promise.all([
-            Chat.find()
-                .populate("user", "name email profile_picture")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            Chat.countDocuments(),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Chats fetched successfully",
-            chats,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Messages ─────────────────────────────────────────────────────────────────
-
-exports.getAllMessages = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.chatId) filter.chat = req.query.chatId;
-
-        const [messages, total] = await Promise.all([
-            Message.find(filter)
-                .populate("chat", "title")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            Message.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Messages fetched successfully",
-            messages,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Motivational Tips ────────────────────────────────────────────────────────
-
-exports.getAllMotivationalTips = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.is_active !== undefined) filter.is_active = req.query.is_active === "true";
-        if (req.query.category) filter.category = req.query.category;
-
-        const [tips, total] = await Promise.all([
-            MotivationalTip.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
-            MotivationalTip.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Motivational tips fetched successfully",
-            tips,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Quick Wins ───────────────────────────────────────────────────────────────
-
-exports.getAllQuickWins = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.is_active !== undefined) filter.is_active = req.query.is_active === "true";
-
-        const [quickWins, total] = await Promise.all([
-            QuickWin.find(filter).sort({ sort_order: 1, createdAt: -1 }).skip(skip).limit(limit),
-            QuickWin.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Quick wins fetched successfully",
-            quickWins,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Health Body ──────────────────────────────────────────────────────────────
-
-exports.getAllHealthBody = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.is_active !== undefined) filter.is_active = req.query.is_active === "true";
-        if (req.query.category)  filter.category = req.query.category;
-
-        const [items, total] = await Promise.all([
-            HealthBody.find(filter).sort({ sort_order: 1, createdAt: -1 }).skip(skip).limit(limit),
-            HealthBody.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Health body items fetched successfully",
-            healthBody: items,
             pagination: paginationMeta(total, page, limit),
         });
     } catch (error) {
@@ -655,152 +375,6 @@ exports.getAllChallenges = async (req, res) => {
     }
 };
 
-// ─── Challenge Participants ───────────────────────────────────────────────────
-
-exports.getAllChallengeParticipants = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.challengeId)   filter.challengeId   = req.query.challengeId;
-        if (req.query.inviteStatus)  filter.inviteStatus  = req.query.inviteStatus;
-        if (req.query.role)          filter.role          = req.query.role;
-
-        const [participants, total] = await Promise.all([
-            ChallengeParticipant.find(filter)
-                .populate("challengeId", "title status mode")
-                .populate("userId",      "name email profile_picture")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            ChallengeParticipant.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Challenge participants fetched successfully",
-            participants,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Challenge Task Assignments ───────────────────────────────────────────────
-
-exports.getAllChallengeTaskAssignments = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.challengeId) filter.challengeId = req.query.challengeId;
-        if (req.query.status)      filter.status      = req.query.status;
-
-        const [assignments, total] = await Promise.all([
-            ChallengeTaskAssignment.find(filter)
-                .populate("challengeId", "title status")
-                .populate("assignedBy",  "name email")
-                .populate("assignedTo",  "name email")
-                .populate("taskId",      "title xps_points")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            ChallengeTaskAssignment.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Challenge task assignments fetched successfully",
-            assignments,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Competitions ─────────────────────────────────────────────────────────────
-
-exports.getAllCompetitions = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.status) filter.status = req.query.status;
-
-        const [competitions, total] = await Promise.all([
-            Competition.find(filter)
-                .populate("createdBy",     "name email profile_picture")
-                .populate("players.user",  "name email profile_picture")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            Competition.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Competitions fetched successfully",
-            competitions,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Badge Templates ──────────────────────────────────────────────────────────
-
-exports.getAllBadgeTemplates = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.isActive !== undefined) filter.isActive = req.query.isActive === "true";
-        if (req.query.type)                   filter.type     = req.query.type;
-
-        const [badgeTemplates, total] = await Promise.all([
-            BadgeTemplate.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
-            BadgeTemplate.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Badge templates fetched successfully",
-            badgeTemplates,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── User Badges ──────────────────────────────────────────────────────────────
-
-exports.getAllUserBadges = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.userId) filter.userId = req.query.userId;
-
-        const [badges, total] = await Promise.all([
-            Badges.find(filter)
-                .populate("userId", "name email profile_picture")
-                .populate("badge",  "title imageUrl type")
-                .sort({ earnedAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            Badges.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "User badges fetched successfully",
-            badges,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
 // ─── Post Reports ─────────────────────────────────────────────────────────────
 
 exports.getAllPostReports = async (req, res) => {
@@ -828,155 +402,14 @@ exports.getAllPostReports = async (req, res) => {
     }
 };
 
-// ─── Post Hides ───────────────────────────────────────────────────────────────
-
-exports.getAllPostHides = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-
-        const [hides, total] = await Promise.all([
-            PostHide.find()
-                .populate("userId", "name email profile_picture")
-                .populate("postId", "description media")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            PostHide.countDocuments(),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Post hides fetched successfully",
-            hides,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── User Progress ────────────────────────────────────────────────────────────
-
-exports.getAllUserProgress = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-
-        const [progress, total] = await Promise.all([
-            UserProgress.find()
-                .populate("userId", "name email profile_picture")
-                .sort({ xp: -1 })
-                .skip(skip)
-                .limit(limit),
-            UserProgress.countDocuments(),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "User progress fetched successfully",
-            progress,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Daily Boards ─────────────────────────────────────────────────────────────
-
-exports.getAllDailyBoards = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.userId) filter.userId = req.query.userId;
-        if (req.query.date)   filter.date   = new Date(req.query.date);
-
-        const [boards, total] = await Promise.all([
-            DailyBoard.find(filter)
-                .populate("userId", "name email profile_picture")
-                .sort({ date: -1 })
-                .skip(skip)
-                .limit(limit),
-            DailyBoard.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Daily boards fetched successfully",
-            boards,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Monthly Boards ───────────────────────────────────────────────────────────
-
-exports.getAllMonthlyBoards = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.userId) filter.userId = req.query.userId;
-        if (req.query.month)  filter.month  = parseInt(req.query.month);
-        if (req.query.year)   filter.year   = parseInt(req.query.year);
-
-        const [boards, total] = await Promise.all([
-            MonthlyBoard.find(filter)
-                .populate("userId", "name email profile_picture")
-                .sort({ year: -1, month: -1 })
-                .skip(skip)
-                .limit(limit),
-            MonthlyBoard.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Monthly boards fetched successfully",
-            boards,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ─── Legacy Boards ────────────────────────────────────────────────────────────
-
-exports.getAllBoards = async (req, res) => {
-    try {
-        const { page, limit, skip } = paginate(req.query);
-        const filter = {};
-        if (req.query.userId) filter.userId = req.query.userId;
-
-        const [boards, total] = await Promise.all([
-            Board.find(filter)
-                .populate("userId",      "name email profile_picture")
-                .populate("competition", "status numberOfPlayers days")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            Board.countDocuments(filter),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            message: "Boards fetched successfully",
-            boards,
-            pagination: paginationMeta(total, page, limit),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
 // ─── Challenge Full Detail ────────────────────────────────────────────────────
 
 exports.getChallengeDetail = async (req, res) => {
     try {
         const challenge = await Challenge.findById(req.params.id)
-            .populate("createdBy", "name email profile_picture")
+            .populate("createdBy",  "name email profile_picture")
             .populate("templateId", "title description")
-            .populate("winner",    "name email profile_picture");
+            .populate("winner",     "name email profile_picture");
 
         if (!challenge) {
             return res.status(404).json({ success: false, message: "Challenge not found" });
@@ -1187,21 +620,6 @@ exports.deletePost = async (req, res) => {
     }
 };
 
-exports.deleteBlog = async (req, res) => {
-    try {
-        const blog = await Blog.findById(req.params.id);
-        if (!blog) return res.status(404).json({ success: false, message: "Blog not found" });
-        await Promise.all([
-            Like.deleteMany({ targetId: blog._id, targetType: "Blog" }),
-            Comment.deleteMany({ targetId: blog._id, targetType: "Blog" }),
-        ]);
-        await Blog.findByIdAndDelete(blog._id);
-        res.status(200).json({ success: true, message: "Blog deleted successfully" });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
 exports.deleteComment = async (req, res) => {
     try {
         const comment = await Comment.findByIdAndDelete(req.params.id);
@@ -1283,226 +701,6 @@ exports.deleteFaq = async (req, res) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
-// CMS — Motivational Tips
-// ══════════════════════════════════════════════════════════════════════════════
-
-exports.createMotivationalTip = async (req, res) => {
-    try {
-        const { tip, category, tag, description, is_active, is_featured, is_fact_of_day, source, read_time } = req.body;
-        if (!tip) return res.status(400).json({ success: false, message: "tip is required" });
-        const motivationalTip = await MotivationalTip.create({ tip, category, tag, description, is_active, is_featured, is_fact_of_day, source, read_time });
-        res.status(201).json({ success: true, message: "Motivational tip created successfully", motivationalTip });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.updateMotivationalTip = async (req, res) => {
-    try {
-        const { tip, category, tag, description, is_active, is_featured, is_fact_of_day, source, read_time } = req.body;
-        const motivationalTip = await MotivationalTip.findByIdAndUpdate(req.params.id, { tip, category, tag, description, is_active, is_featured, is_fact_of_day, source, read_time }, { new: true });
-        if (!motivationalTip) return res.status(404).json({ success: false, message: "Motivational tip not found" });
-        res.status(200).json({ success: true, message: "Motivational tip updated successfully", motivationalTip });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.deleteMotivationalTip = async (req, res) => {
-    try {
-        const tip = await MotivationalTip.findByIdAndDelete(req.params.id);
-        if (!tip) return res.status(404).json({ success: false, message: "Motivational tip not found" });
-        res.status(200).json({ success: true, message: "Motivational tip deleted successfully" });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
-// CMS — Quick Wins
-// ══════════════════════════════════════════════════════════════════════════════
-
-exports.createQuickWin = async (req, res) => {
-    try {
-        const { title, description, read_time, icon, is_active, sort_order } = req.body;
-        if (!title) return res.status(400).json({ success: false, message: "title is required" });
-        const quickWin = await QuickWin.create({ title, description, read_time, icon, is_active, sort_order });
-        res.status(201).json({ success: true, message: "Quick win created successfully", quickWin });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.updateQuickWin = async (req, res) => {
-    try {
-        const { title, description, read_time, icon, is_active, sort_order } = req.body;
-        const quickWin = await QuickWin.findByIdAndUpdate(req.params.id, { title, description, read_time, icon, is_active, sort_order }, { new: true });
-        if (!quickWin) return res.status(404).json({ success: false, message: "Quick win not found" });
-        res.status(200).json({ success: true, message: "Quick win updated successfully", quickWin });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.deleteQuickWin = async (req, res) => {
-    try {
-        const quickWin = await QuickWin.findByIdAndDelete(req.params.id);
-        if (!quickWin) return res.status(404).json({ success: false, message: "Quick win not found" });
-        res.status(200).json({ success: true, message: "Quick win deleted successfully" });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
-// CMS — Health Body
-// ══════════════════════════════════════════════════════════════════════════════
-
-exports.createHealthBody = async (req, res) => {
-    try {
-        const { title, description, category, category_tag, icon, read_time, is_active, sort_order } = req.body;
-        if (!title || !description || !category) return res.status(400).json({ success: false, message: "title, description, and category are required" });
-        const healthBody = await HealthBody.create({ title, description, category, category_tag, icon, read_time, is_active, sort_order });
-        res.status(201).json({ success: true, message: "Health body item created successfully", healthBody });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.updateHealthBody = async (req, res) => {
-    try {
-        const { title, description, category, category_tag, icon, read_time, is_active, sort_order } = req.body;
-        const healthBody = await HealthBody.findByIdAndUpdate(req.params.id, { title, description, category, category_tag, icon, read_time, is_active, sort_order }, { new: true });
-        if (!healthBody) return res.status(404).json({ success: false, message: "Health body item not found" });
-        res.status(200).json({ success: true, message: "Health body item updated successfully", healthBody });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.deleteHealthBody = async (req, res) => {
-    try {
-        const item = await HealthBody.findByIdAndDelete(req.params.id);
-        if (!item) return res.status(404).json({ success: false, message: "Health body item not found" });
-        res.status(200).json({ success: true, message: "Health body item deleted successfully" });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
-// CMS — Challenge Templates
-// ══════════════════════════════════════════════════════════════════════════════
-
-exports.createTemplate = async (req, res) => {
-    try {
-        const { title, description, category, durationDays, boardSize, xpReward, isActive, isCustom } = req.body;
-        if (!title) return res.status(400).json({ success: false, message: "title is required" });
-        if (!category || !mongoose.Types.ObjectId.isValid(category)) return res.status(400).json({ success: false, message: "Valid category id is required" });
-        if (durationDays !== undefined && durationDays < 1) return res.status(400).json({ success: false, message: "durationDays must be at least 1" });
-        if (xpReward !== undefined && xpReward < 0) return res.status(400).json({ success: false, message: "xpReward cannot be negative" });
-        const template = await Template.create({ title, description, category, durationDays, boardSize, xpReward, isActive, isCustom, createdBy: req.user.id });
-        await template.populate("category", "name");
-        res.status(201).json({ success: true, message: "Template created successfully", template });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.updateTemplate = async (req, res) => {
-    try {
-        const { title, description, category, durationDays, boardSize, xpReward, isActive, isCustom } = req.body;
-        const template = await Template.findByIdAndUpdate(req.params.id, { title, description, category, durationDays, boardSize, xpReward, isActive, isCustom }, { new: true }).populate("category", "name");
-        if (!template) return res.status(404).json({ success: false, message: "Template not found" });
-        res.status(200).json({ success: true, message: "Template updated successfully", template });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.deleteTemplate = async (req, res) => {
-    try {
-        const template = await Template.findByIdAndDelete(req.params.id);
-        if (!template) return res.status(404).json({ success: false, message: "Template not found" });
-        res.status(200).json({ success: true, message: "Template deleted successfully" });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
-// CMS — Badge Templates
-// ══════════════════════════════════════════════════════════════════════════════
-
-exports.createBadgeTemplate = async (req, res) => {
-    try {
-        const { title, imageUrl, type, conditionValue, isActive } = req.body;
-        if (!title || !imageUrl || !type || conditionValue === undefined) return res.status(400).json({ success: false, message: "title, imageUrl, type, and conditionValue are required" });
-        const template = await BadgeTemplate.create({ title, imageUrl, type, conditionValue, isActive: isActive !== undefined ? isActive : true });
-        res.status(201).json({ success: true, message: "Badge template created successfully", template });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.updateBadgeTemplate = async (req, res) => {
-    try {
-        const { title, imageUrl, type, conditionValue, isActive } = req.body;
-        const template = await BadgeTemplate.findByIdAndUpdate(req.params.id, { title, imageUrl, type, conditionValue, isActive }, { new: true });
-        if (!template) return res.status(404).json({ success: false, message: "Badge template not found" });
-        res.status(200).json({ success: true, message: "Badge template updated successfully", template });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.deleteBadgeTemplate = async (req, res) => {
-    try {
-        const template = await BadgeTemplate.findByIdAndDelete(req.params.id);
-        if (!template) return res.status(404).json({ success: false, message: "Badge template not found" });
-        res.status(200).json({ success: true, message: "Badge template deleted successfully" });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
-// CMS — Categories
-// ══════════════════════════════════════════════════════════════════════════════
-
-exports.createCategory = async (req, res) => {
-    try {
-        const { name } = req.body;
-        if (!name) return res.status(400).json({ success: false, message: "name is required" });
-        const category = await Category.create({ name });
-        res.status(201).json({ success: true, message: "Category created successfully", category });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.updateCategory = async (req, res) => {
-    try {
-        const { name } = req.body;
-        const category = await Category.findByIdAndUpdate(req.params.id, { name }, { new: true });
-        if (!category) return res.status(404).json({ success: false, message: "Category not found" });
-        res.status(200).json({ success: true, message: "Category updated successfully", category });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.deleteCategory = async (req, res) => {
-    try {
-        const category = await Category.findByIdAndDelete(req.params.id);
-        if (!category) return res.status(404).json({ success: false, message: "Category not found" });
-        res.status(200).json({ success: true, message: "Category deleted successfully" });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
 // CMS — Milestones
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -1517,58 +715,11 @@ exports.createMilestone = async (req, res) => {
     }
 };
 
-exports.updateMilestone = async (req, res) => {
-    try {
-        const { title, description, badge_image } = req.body;
-        const milestone = await Milestone.findByIdAndUpdate(req.params.id, { title, description, badge_image }, { new: true });
-        if (!milestone) return res.status(404).json({ success: false, message: "Milestone not found" });
-        res.status(200).json({ success: true, message: "Milestone updated successfully", milestone });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
 exports.deleteMilestone = async (req, res) => {
     try {
         const milestone = await Milestone.findByIdAndDelete(req.params.id);
         if (!milestone) return res.status(404).json({ success: false, message: "Milestone not found" });
         res.status(200).json({ success: true, message: "Milestone deleted successfully" });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// ══════════════════════════════════════════════════════════════════════════════
-// CMS — Smoke-Free Milestones
-// ══════════════════════════════════════════════════════════════════════════════
-
-exports.createSmokeFreeMilestone = async (req, res) => {
-    try {
-        const { title, description, duration_minutes, icon, badge_image, xp_reward, is_active, sort_order } = req.body;
-        if (!title || duration_minutes === undefined) return res.status(400).json({ success: false, message: "title and duration_minutes are required" });
-        const milestone = await SmokeFreeMilestone.create({ title, description, duration_minutes, icon, badge_image, xp_reward, is_active, sort_order });
-        res.status(201).json({ success: true, message: "Smoke-free milestone created successfully", milestone });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.updateSmokeFreeMilestone = async (req, res) => {
-    try {
-        const { title, description, duration_minutes, icon, badge_image, xp_reward, is_active, sort_order } = req.body;
-        const milestone = await SmokeFreeMilestone.findByIdAndUpdate(req.params.id, { title, description, duration_minutes, icon, badge_image, xp_reward, is_active, sort_order }, { new: true });
-        if (!milestone) return res.status(404).json({ success: false, message: "Smoke-free milestone not found" });
-        res.status(200).json({ success: true, message: "Smoke-free milestone updated successfully", milestone });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.deleteSmokeFreeMilestone = async (req, res) => {
-    try {
-        const milestone = await SmokeFreeMilestone.findByIdAndDelete(req.params.id);
-        if (!milestone) return res.status(404).json({ success: false, message: "Smoke-free milestone not found" });
-        res.status(200).json({ success: true, message: "Smoke-free milestone deleted successfully" });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
