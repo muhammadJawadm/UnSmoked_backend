@@ -7,7 +7,7 @@ const sendNotificationToUsers = require("../utils/sendNotification");
 
 exports.createTask = async (req, res) => {
     try {
-        const { title, description, goal, requirement, proof, example, xps_points } = req.body;
+        const { title, description, goal, requirement, proof, xps_points } = req.body;
         if (!title) return res.status(400).json({ success: false, message: "title is required" });
         if (!description) return res.status(400).json({ success: false, message: "description is required" });
         const task = await Task.create({
@@ -16,7 +16,6 @@ exports.createTask = async (req, res) => {
             goal:        goal        ?? "",
             requirement: requirement ?? "",
             proof:       proof       ?? null,
-            example:     example     ?? null,
             xps_points:  xps_points  ?? 0,
         });
         res.status(201).json({ success: true, message: "Task created successfully", task });
@@ -66,11 +65,11 @@ exports.getTaskById = async (req, res) => {
 
 exports.updateTask = async (req, res) => {
     try {
-        const { title, description, goal, requirement, proof, example, xps_points } = req.body;
+        const { title, description, goal, requirement, proof, xps_points } = req.body;
 
         const task = await Task.findByIdAndUpdate(
             req.params.id,
-            { title, description, goal, requirement, proof, example, xps_points },
+            { title, description, goal, requirement, proof, xps_points },
             { new: true, omitUndefined: true }
         );
         if (!task) return res.status(404).json({ success: false, message: "Task not found" });
@@ -174,7 +173,7 @@ exports.assignChallengeTask = async (req, res) => {
 
         const savedAssignments = await ChallengeTaskAssignment.find({ _id: { $in: insertedIds } })
             .populate('assignedBy', 'name profile_picture')
-            .populate('taskId', 'title description goal requirement proof example xps_points')
+            .populate('taskId', 'title description goal requirement proof xps_points')
             .lean();
 
         const formattedAssignments = savedAssignments.map(a => ({
@@ -193,7 +192,7 @@ exports.assignChallengeTask = async (req, res) => {
                 goal:        a.taskId.goal        ?? null,
                 requirement: a.taskId.requirement ?? null,
                 proof:       a.taskId.proof       ?? null,
-                example:     a.taskId.example     ?? null,
+        
                 xps_points:  a.taskId.xps_points  ?? 0,
             } : null,
             note:        a.note ?? "",
@@ -241,7 +240,7 @@ const formatAssignment = (a) => ({
         goal:        a.taskId.goal        ?? null,
         requirement: a.taskId.requirement ?? null,
         proof:       a.taskId.proof       ?? null,
-        example:     a.taskId.example     ?? null,
+
         xps_points:  a.taskId.xps_points  ?? 0,
     } : null,
     note:        a.note ?? "",
@@ -261,7 +260,7 @@ exports.getMyAssignedTasks = async (req, res) => {
 
         const raw = await ChallengeTaskAssignment.find(filter)
             .populate('assignedBy', 'name profile_picture')
-            .populate('taskId', 'title description goal requirement proof example xps_points')
+            .populate('taskId', 'title description goal requirement proof xps_points')
             .sort({ createdAt: -1 })
             .lean();
 
@@ -283,7 +282,7 @@ exports.getTasksIAssigned = async (req, res) => {
 
         const raw = await ChallengeTaskAssignment.find(filter)
             .populate('assignedBy', 'name profile_picture')
-            .populate('taskId', 'title description goal requirement proof example xps_points')
+            .populate('taskId', 'title description goal requirement proof xps_points')
             .sort({ createdAt: -1 })
             .lean();
 

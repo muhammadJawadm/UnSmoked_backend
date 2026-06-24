@@ -23,10 +23,7 @@ const taskSchema = new mongoose.Schema({
         type: String,
         default: null,
     },
-    example: {
-        type: String,
-        default: null,
-    },
+
     xps_points: {
         type: Number,
         default: 0,
