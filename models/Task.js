@@ -3,25 +3,34 @@ const mongoose = require("mongoose");
 const taskSchema = new mongoose.Schema({
     title: {
         type: String,
-        required: true
+        required: true,
+        trim: true,
     },
     description: {
         type: String,
-        required: true
+        required: true,
+    },
+    goal: {
+        type: String,
+        default: "",
+    },
+    requirement: {
+        type: String,
+        default: "",
+    },
+    // What proof the loser must submit. null/empty = proof not required (skippable).
+    proof: {
+        type: String,
+        default: null,
+    },
+    example: {
+        type: String,
+        default: null,
     },
     xps_points: {
         type: Number,
-        default: 0
+        default: 0,
     },
-    is_custom: {
-        type: Boolean,
-        default: false
-    },
-    userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true
-    }
 }, { timestamps: true });
 
 module.exports = mongoose.model("Task", taskSchema);

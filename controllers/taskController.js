@@ -7,14 +7,17 @@ const sendNotificationToUsers = require("../utils/sendNotification");
 
 exports.createTask = async (req, res) => {
     try {
-        const { title, description, xps_points, is_custom } = req.body;
-        const userId = req.user.id;
+        const { title, description, goal, requirement, proof, example, xps_points } = req.body;
+        if (!title) return res.status(400).json({ success: false, message: "title is required" });
+        if (!description) return res.status(400).json({ success: false, message: "description is required" });
         const task = await Task.create({
             title,
             description,
-            xps_points,
-            is_custom,
-            userId
+            goal:        goal        ?? "",
+            requirement: requirement ?? "",
+            proof:       proof       ?? null,
+            example:     example     ?? null,
+            xps_points:  xps_points  ?? 0,
         });
         res.status(201).json({ success: true, message: "Task created successfully", task });
     } catch (error) {
@@ -29,12 +32,8 @@ exports.getAllTasks = async (req, res) => {
         const skip = (currentPage - 1) * pageSize;
 
         const [results, totalItems] = await Promise.all([
-            Task.find()
-                .populate("userId", "name profile_picture")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(pageSize),
-            Task.countDocuments()
+            Task.find().sort({ createdAt: -1 }).skip(skip).limit(pageSize),
+            Task.countDocuments(),
         ]);
 
         const totalPages = Math.ceil(totalItems / pageSize);
@@ -57,11 +56,8 @@ exports.getAllTasks = async (req, res) => {
 
 exports.getTaskById = async (req, res) => {
     try {
-        const task = await Task.findById(req.params.id)
-            .populate("userId", "name profile_picture");
-        if (!task) {
-            return res.status(404).json({ success: false, message: "Task not found" });
-        }
+        const task = await Task.findById(req.params.id);
+        if (!task) return res.status(404).json({ success: false, message: "Task not found" });
         res.status(200).json({ success: true, task });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -70,24 +66,14 @@ exports.getTaskById = async (req, res) => {
 
 exports.updateTask = async (req, res) => {
     try {
-        const { title, description, xps_points, is_custom } = req.body;
-        const userId = req.user.id;
+        const { title, description, goal, requirement, proof, example, xps_points } = req.body;
 
-        // First, check if task exists and verify ownership
-        const existingTask = await Task.findById(req.params.id);
-        if (!existingTask) {
-            return res.status(404).json({ success: false, message: "Task not found" });
-        }
-        if (existingTask.userId.toString() !== userId) {
-            return res.status(403).json({ success: false, message: "You are not authorized to update this task" });
-        }
-
-        // Now perform the update
         const task = await Task.findByIdAndUpdate(
             req.params.id,
-            { title, description, xps_points, is_custom },
-            { new: true }
+            { title, description, goal, requirement, proof, example, xps_points },
+            { new: true, omitUndefined: true }
         );
+        if (!task) return res.status(404).json({ success: false, message: "Task not found" });
 
         res.status(200).json({ success: true, message: "Task updated successfully", task });
     } catch (error) {
@@ -97,20 +83,8 @@ exports.updateTask = async (req, res) => {
 
 exports.deleteTask = async (req, res) => {
     try {
-        const { id } = req.params;
-        const userId = req.user.id;
-
-        // First, check if task exists and verify ownership
-        const task = await Task.findById(id);
-        if (!task) {
-            return res.status(404).json({ success: false, message: "Task not found" });
-        }
-        if (task.userId.toString() !== userId) {
-            return res.status(403).json({ success: false, message: "You are not authorized to delete this task" });
-        }
-
-        // Now delete the task
-        await Task.findByIdAndDelete(id);
+        const task = await Task.findByIdAndDelete(req.params.id);
+        if (!task) return res.status(404).json({ success: false, message: "Task not found" });
         res.status(200).json({ success: true, message: "Task deleted successfully" });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -122,7 +96,7 @@ exports.deleteTask = async (req, res) => {
 exports.assignChallengeTask = async (req, res) => {
     try {
         const assignedBy = req.user.id;
-        const { challengeId, assignedTo, note, tasks } = req.body;
+        const { challengeId, assignedTo, note, taskIds } = req.body;
 
         // ── Validate required fields ──────────────────────────────────
         if (!challengeId) {
@@ -131,13 +105,12 @@ exports.assignChallengeTask = async (req, res) => {
         if (!Array.isArray(assignedTo) || assignedTo.length === 0) {
             return res.status(400).json({ success: false, message: "assignedTo (array of loser userIds) is required and must not be empty" });
         }
-        if (!Array.isArray(tasks) || tasks.length === 0) {
-            return res.status(400).json({ success: false, message: "tasks must be a non-empty array" });
+        if (!Array.isArray(taskIds) || taskIds.length === 0) {
+            return res.status(400).json({ success: false, message: "taskIds must be a non-empty array of task IDs" });
         }
 
         // ── Verify challenge exists and is completed ─────────────────────
-        const challenge = await Challenge.findById(challengeId)
-            .populate("winner", "_id name");
+        const challenge = await Challenge.findById(challengeId).populate("winner", "_id name");
         if (!challenge) {
             return res.status(404).json({ success: false, message: "Challenge not found" });
         }
@@ -156,13 +129,10 @@ exports.assignChallengeTask = async (req, res) => {
             });
         }
 
-        // ── Verify all assignedTo users were participants of this challenge ────────
+        // ── Verify all assignedTo users were accepted participants ────────
         for (const loserId of assignedTo) {
             if (loserId === assignedBy) {
-                return res.status(400).json({
-                    success: false,
-                    message: "You cannot assign a task to yourself",
-                });
+                return res.status(400).json({ success: false, message: "You cannot assign a task to yourself" });
             }
             const loserParticipant = await ChallengeParticipant.findOne({
                 challengeId,
@@ -172,105 +142,68 @@ exports.assignChallengeTask = async (req, res) => {
             if (!loserParticipant) {
                 return res.status(404).json({
                     success: false,
-                    message: `The specified user (${loserId}) was not an accepted participant of this challenge`,
+                    message: `User (${loserId}) was not an accepted participant of this challenge`,
                 });
             }
         }
 
-        // ── Validate each task entry ───────────────────────────────
-        for (const [i, t] of tasks.entries()) {
-            const hasExisting = !!t.taskId;
-            const hasCustom   = t.customTask && t.customTask.title && t.customTask.description;
-
-            if (!hasExisting && !hasCustom) {
-                return res.status(400).json({
-                    success: false,
-                    message: `tasks[${i}]: must have either taskId (existing) or customTask.title + customTask.description`,
-                });
-            }
-            if (hasExisting) {
-                const exists = await Task.exists({ _id: t.taskId });
-                if (!exists) {
-                    return res.status(404).json({
-                        success: false,
-                        message: `tasks[${i}]: Task with id "${t.taskId}" not found`,
-                    });
-                }
+        // ── Verify all taskIds exist ───────────────────────────────
+        for (const [i, taskId] of taskIds.entries()) {
+            const exists = await Task.exists({ _id: taskId });
+            if (!exists) {
+                return res.status(404).json({ success: false, message: `taskIds[${i}]: Task "${taskId}" not found` });
             }
         }
 
-        // ── Create assignments ─────────────────────────────────────────
+        // ── Create one assignment per loser × per task ─────────────────
         const assignmentDocs = [];
         for (const loserId of assignedTo) {
-            for (const t of tasks) {
-                const doc = {
+            for (const taskId of taskIds) {
+                assignmentDocs.push({
                     challengeId,
                     assignedBy,
                     assignedTo: loserId,
+                    taskId,
                     note: note || "",
-                };
-                if (t.taskId) {
-                    doc.taskId = t.taskId;
-                } else {
-                    doc.taskId = null;
-                    doc.customTask = t.customTask || {};
-                }
-                assignmentDocs.push(doc);
+                });
             }
         }
-        
-        const assignments = await ChallengeTaskAssignment.insertMany(assignmentDocs);
 
-        // Re-query inserted assignments to control the response shape
-        const insertedIds = assignments.map(a => a._id);
+        const inserted = await ChallengeTaskAssignment.insertMany(assignmentDocs);
+        const insertedIds = inserted.map(a => a._id);
+
         const savedAssignments = await ChallengeTaskAssignment.find({ _id: { $in: insertedIds } })
             .populate('assignedBy', 'name profile_picture')
-            .populate('taskId', 'title description xps_points')
+            .populate('taskId', 'title description goal requirement proof example xps_points')
             .lean();
 
-        // Format assignments according to requirements:
-        // - if taskId is provided, return customTask as null
-        // - assignedBy should include name and profile_picture
-        // - challengeId should be returned as the id only (no populated title/status)
-        // - assignedTo should be returned as the user id only
-        const formattedAssignments = savedAssignments.map(a => {
-            const item = {
-                _id: a._id,
-                challengeId: a.challengeId ? a.challengeId.toString() : null,
-                assignedBy: a.assignedBy ? {
-                    _id: a.assignedBy._id ? a.assignedBy._id.toString() : null,
-                    name: a.assignedBy.name || null,
-                    profile_picture: a.assignedBy.profile_picture || null,
-                } : { _id: assignedBy },
-                assignedTo: a.assignedTo ? a.assignedTo.toString() : null,
-                taskId: a.taskId ? (typeof a.taskId === 'object' ? {
-                    _id: a.taskId._id ? a.taskId._id.toString() : null,
-                    title: a.taskId.title || null,
-                    description: a.taskId.description || null,
-                    xps_points: a.taskId.xps_points || null,
-                } : a.taskId.toString()) : null,
-                note: a.note || "",
-                status: a.status || "pending",
-                createdAt: a.createdAt,
-                updatedAt: a.updatedAt,
-            };
-
-            // Only include customTask when this assignment was created with a custom task
-            if (!a.taskId) {
-                const ct = a.customTask;
-                const hasCustomValues = ct && (
-                    (ct.title && String(ct.title).trim() !== '') ||
-                    (ct.description && String(ct.description).trim() !== '') ||
-                    (typeof ct.xps_points === 'number' && ct.xps_points > 0)
-                );
-                item.customTask = hasCustomValues ? ct : null;
-            }
-
-            return item;
-        });
+        const formattedAssignments = savedAssignments.map(a => ({
+            _id:         a._id,
+            challengeId: a.challengeId?.toString() ?? null,
+            assignedBy:  a.assignedBy ? {
+                _id:             a.assignedBy._id?.toString() ?? null,
+                name:            a.assignedBy.name ?? null,
+                profile_picture: a.assignedBy.profile_picture ?? null,
+            } : { _id: assignedBy },
+            assignedTo:  a.assignedTo?.toString() ?? null,
+            task:        a.taskId ? {
+                _id:         a.taskId._id?.toString() ?? null,
+                title:       a.taskId.title       ?? null,
+                description: a.taskId.description ?? null,
+                goal:        a.taskId.goal        ?? null,
+                requirement: a.taskId.requirement ?? null,
+                proof:       a.taskId.proof       ?? null,
+                example:     a.taskId.example     ?? null,
+                xps_points:  a.taskId.xps_points  ?? 0,
+            } : null,
+            note:        a.note ?? "",
+            status:      a.status ?? "pending",
+            createdAt:   a.createdAt,
+            updatedAt:   a.updatedAt,
+        }));
 
         // ── Notify the losers ───────────────────────────────────────
-        const winner = await User.findById(assignedBy).select("name profile_picture");
+        const winner = await User.findById(assignedBy).select("name");
         await sendNotificationToUsers(
             assignedTo,
             "New Task Assigned! 📋",
@@ -292,6 +225,31 @@ exports.assignChallengeTask = async (req, res) => {
  * GET /tasks/my-assigned
  * Loser sees all tasks assigned TO them (optionally filter by ?challengeId=... or ?status=pending|completed)
  */
+const formatAssignment = (a) => ({
+    _id:         a._id,
+    challengeId: a.challengeId?.toString() ?? null,
+    assignedBy:  a.assignedBy ? {
+        _id:             a.assignedBy._id?.toString() ?? null,
+        name:            a.assignedBy.name ?? null,
+        profile_picture: a.assignedBy.profile_picture ?? null,
+    } : null,
+    assignedTo:  a.assignedTo?.toString() ?? null,
+    task:        a.taskId ? {
+        _id:         a.taskId._id?.toString() ?? null,
+        title:       a.taskId.title       ?? null,
+        description: a.taskId.description ?? null,
+        goal:        a.taskId.goal        ?? null,
+        requirement: a.taskId.requirement ?? null,
+        proof:       a.taskId.proof       ?? null,
+        example:     a.taskId.example     ?? null,
+        xps_points:  a.taskId.xps_points  ?? 0,
+    } : null,
+    note:        a.note ?? "",
+    status:      a.status ?? "pending",
+    createdAt:   a.createdAt,
+    updatedAt:   a.updatedAt,
+});
+
 exports.getMyAssignedTasks = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -301,57 +259,19 @@ exports.getMyAssignedTasks = async (req, res) => {
         if (challengeId) filter.challengeId = challengeId;
         if (status && ["pending", "completed"].includes(status)) filter.status = status;
 
-        const assignmentsRaw = await ChallengeTaskAssignment.find(filter)
+        const raw = await ChallengeTaskAssignment.find(filter)
             .populate('assignedBy', 'name profile_picture')
-            .populate('taskId', 'title description xps_points')
+            .populate('taskId', 'title description goal requirement proof example xps_points')
             .sort({ createdAt: -1 })
             .lean();
 
-        const assignments = assignmentsRaw.map(a => {
-            const item = {
-                _id: a._id,
-                challengeId: a.challengeId ? a.challengeId.toString() : null,
-                assignedBy: a.assignedBy ? {
-                    _id: a.assignedBy._id ? a.assignedBy._id.toString() : null,
-                    name: a.assignedBy.name || null,
-                    profile_picture: a.assignedBy.profile_picture || null,
-                } : null,
-                assignedTo: a.assignedTo ? a.assignedTo.toString() : null,
-                taskId: a.taskId ? (typeof a.taskId === 'object' ? {
-                    _id: a.taskId._id ? a.taskId._id.toString() : null,
-                    title: a.taskId.title || null,
-                    description: a.taskId.description || null,
-                    xps_points: a.taskId.xps_points || null,
-                } : a.taskId.toString()) : null,
-                note: a.note || "",
-                status: a.status || "pending",
-                createdAt: a.createdAt,
-                updatedAt: a.updatedAt,
-            };
-
-            if (!a.taskId) {
-                const ct = a.customTask;
-                const hasCustomValues = ct && (
-                    (ct.title && String(ct.title).trim() !== '') ||
-                    (ct.description && String(ct.description).trim() !== '') ||
-                    (typeof ct.xps_points === 'number' && ct.xps_points > 0)
-                );
-                item.customTask = hasCustomValues ? ct : null;
-            }
-
-            return item;
-        });
-
+        const assignments = raw.map(formatAssignment);
         res.status(200).json({ success: true, count: assignments.length, assignments });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-/**
- * GET /tasks/i-assigned
- * Winner sees all tasks they assigned (optionally filter by ?challengeId=... or ?status=...)
- */
 exports.getTasksIAssigned = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -361,73 +281,31 @@ exports.getTasksIAssigned = async (req, res) => {
         if (challengeId) filter.challengeId = challengeId;
         if (status && ["pending", "completed"].includes(status)) filter.status = status;
 
-        const assignmentsRaw = await ChallengeTaskAssignment.find(filter)
+        const raw = await ChallengeTaskAssignment.find(filter)
             .populate('assignedBy', 'name profile_picture')
-            .populate('taskId', 'title description xps_points')
+            .populate('taskId', 'title description goal requirement proof example xps_points')
             .sort({ createdAt: -1 })
             .lean();
 
-        const assignments = assignmentsRaw.map(a => {
-            const item = {
-                _id: a._id,
-                challengeId: a.challengeId ? a.challengeId.toString() : null,
-                assignedBy: a.assignedBy ? {
-                    _id: a.assignedBy._id ? a.assignedBy._id.toString() : null,
-                    name: a.assignedBy.name || null,
-                    profile_picture: a.assignedBy.profile_picture || null,
-                } : null,
-                assignedTo: a.assignedTo ? a.assignedTo.toString() : null,
-                taskId: a.taskId ? (typeof a.taskId === 'object' ? {
-                    _id: a.taskId._id ? a.taskId._id.toString() : null,
-                    title: a.taskId.title || null,
-                    description: a.taskId.description || null,
-                    xps_points: a.taskId.xps_points || null,
-                } : a.taskId.toString()) : null,
-                note: a.note || "",
-                status: a.status || "pending",
-                createdAt: a.createdAt,
-                updatedAt: a.updatedAt,
-            };
-
-            if (!a.taskId) {
-                const ct = a.customTask;
-                const hasCustomValues = ct && (
-                    (ct.title && String(ct.title).trim() !== '') ||
-                    (ct.description && String(ct.description).trim() !== '') ||
-                    (typeof ct.xps_points === 'number' && ct.xps_points > 0)
-                );
-                item.customTask = hasCustomValues ? ct : null;
-            }
-
-            return item;
-        });
-
+        const assignments = raw.map(formatAssignment);
         res.status(200).json({ success: true, count: assignments.length, assignments });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-/**
- * PATCH /tasks/challenge-assign/:id/complete
- * Loser marks an assigned task as completed.
- */
 exports.completeAssignedTask = async (req, res) => {
     try {
         const userId = req.user.id;
         const { id } = req.params;
 
         const assignment = await ChallengeTaskAssignment.findById(id)
-            .populate("assignedBy", "name")
-            .populate("challengeId", "title");
+            .populate("assignedBy", "name");
         if (!assignment) {
             return res.status(404).json({ success: false, message: "Assignment not found" });
         }
         if (assignment.assignedTo.toString() !== userId) {
-            return res.status(403).json({
-                success: false,
-                message: "You can only complete tasks assigned to you",
-            });
+            return res.status(403).json({ success: false, message: "You can only complete tasks assigned to you" });
         }
         if (assignment.status === "completed") {
             return res.status(400).json({ success: false, message: "Task is already marked as completed" });
@@ -437,20 +315,15 @@ exports.completeAssignedTask = async (req, res) => {
         assignment.completedAt = new Date();
         await assignment.save();
 
-        // Notify the winner
         const loser = await User.findById(userId).select("name");
         await sendNotificationToUsers(
             [assignment.assignedBy._id.toString()],
             "Task Completed! ✅",
-            `${loser?.name || "The loser"} completed a task from "${assignment.challengeId?.title || "the challenge"}"`,
+            `${loser?.name || "The loser"} completed a task from the challenge`,
             { type: "challenge_task_completed", assignmentId: id }
         );
 
-        res.status(200).json({
-            success: true,
-            message: "Task marked as completed",
-            assignment,
-        });
+        res.status(200).json({ success: true, message: "Task marked as completed", assignment });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
