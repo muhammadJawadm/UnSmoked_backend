@@ -188,7 +188,7 @@ exports.registerUser = async (req, res) => {
         await sendEmail(email, otp);
 
         // Generate token for immediate authentication
-        const token = generateToken(newUser._id);
+        const token = generateToken(newUser._id, newUser.role);
 
         res.status(201).json({
             success: true,
@@ -421,7 +421,7 @@ exports.loginUser = async (req, res) => {
 
 
         // Generate JWT token
-        const token = generateToken(user._id);
+        const token = generateToken(user._id, user.role);
 
 
 
@@ -502,7 +502,7 @@ exports.googleLogin = async (req, res) => {
             await user.save();
         }
 
-        const token = generateToken(user._id);
+        const token = generateToken(user._id, user.role);
 
         res.status(200).json({
             success: true,
