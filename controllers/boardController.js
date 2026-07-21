@@ -488,11 +488,11 @@ exports.getUserOverviewStats = async (req, res) => {
             overallHealth: "Fair",
         };
 
-        const currencySymbol = userDoc?.currency === "EUR" ? "€" : "$";
+        const currency = userDoc?.currency === "EUR" ? "€" : "$";
 
         res.status(200).json({
             success: true,
-            currencySymbol,
+            currency,
             overview: {
                 daily: {
                     cigarettesAvoided: stats.dailyCigarettesAvoided,

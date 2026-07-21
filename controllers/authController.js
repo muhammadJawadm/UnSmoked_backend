@@ -602,7 +602,7 @@ exports.getUserProfile = async (req, res) => {
             success: true,
             user: {
                 ...user.toObject(),
-                currencySymbol: user.currency === "EUR" ? "€" : "$",
+                currency: user.currency === "EUR" ? "€" : "$",
                 xp: progress.xp,
                 level: progress.level,
                 challengesCompleted: progress.challengesCompleted,
@@ -666,7 +666,7 @@ exports.getUserById = async (req, res) => {
             success: true,
             user: {
                 ...user.toObject(),
-                currencySymbol: user.currency === "EUR" ? "€" : "$",
+                currency: user.currency === "EUR" ? "€" : "$",
                 xp: progress.xp,
                 level: progress.level,
                 challengesCompleted: progress.challengesCompleted,
@@ -735,7 +735,9 @@ exports.updateUser = async (req, res) => {
         user.updated_at = Date.now();
         await user.save();
 
-        res.json({ success: true, message: "User updated successfully", user });
+        const userObj = user.toObject();
+        userObj.currency = user.currency === "EUR" ? "€" : "$";
+        res.json({ success: true, message: "User updated successfully", user: userObj });
     } catch (error) {
         console.error(error);
         res.status(500).json({ success: false, message: "Internal server error" });
