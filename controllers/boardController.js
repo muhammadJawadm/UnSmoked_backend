@@ -704,7 +704,7 @@ exports.getLeaderboard = async (req, res) => {
             UserProgress.find({ userId: { $in: userIds } }).lean(),
             Badges.find({ userId: { $in: userIds } })
                 .sort({ earnedAt: -1 })
-                .populate("badge", "title imageUrl type")
+                .populate("badge", "title description imageUrl type")
                 .lean(),
         ]);
 

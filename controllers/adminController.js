@@ -448,7 +448,7 @@ exports.getUserById = async (req, res) => {
 
         const [progress, badges, milestones, postCount, challengeCount] = await Promise.all([
             UserProgress.findOne({ userId: user._id }),
-            Badges.find({ userId: user._id }).populate("badge", "title imageUrl type"),
+            Badges.find({ userId: user._id }).populate("badge", "title description imageUrl type"),
             UserMilestone.find({ userId: user._id }).populate("milestoneId", "title description badge_image"),
             Post.countDocuments({ userId: user._id }),
             Challenge.countDocuments({ createdBy: user._id }),

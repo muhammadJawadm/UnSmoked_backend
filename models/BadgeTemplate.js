@@ -4,11 +4,15 @@ const badgeTemplateSchema = new mongoose.Schema(
     {
         title: {
             type: String,
-            required: true
+            required: true,
+        },
+        description: {
+            type: String,
+            default: null,
         },
         imageUrl: {
             type: String,
-            required: true
+            required: true,
         },
 
         type: {

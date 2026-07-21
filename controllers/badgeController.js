@@ -1,6 +1,7 @@
 const BadgeTemplate = require("../models/BadgeTemplate");
 const Badges = require("../models/Badges");
 const { checkAndAssignBadge, getUserBadges } = require("../services/badgeService");
+const { uploadToCloudinary } = require("../utils/cloudinary");
 
 // ─── ADMIN: Badge Template CRUD ──────────────────────────────────────────────
 
@@ -11,7 +12,7 @@ exports.createBadgeTemplate = async (req, res) => {
             return res.status(403).json({ success: false, message: "Admin access required" });
         }
 
-        const { title, imageUrl, type, conditionValue, isActive } = req.body;
+        const { title, description, imageUrl, type, conditionValue, isActive } = req.body;
 
         if (!title || !imageUrl || !type || conditionValue === undefined) {
             return res.status(400).json({
@@ -22,6 +23,7 @@ exports.createBadgeTemplate = async (req, res) => {
 
         const template = await BadgeTemplate.create({
             title,
+            description: description ?? null,
             imageUrl,
             type,
             conditionValue,
@@ -74,10 +76,10 @@ exports.updateBadgeTemplate = async (req, res) => {
             return res.status(403).json({ success: false, message: "Admin access required" });
         }
 
-        const { title, imageUrl, type, conditionValue, isActive } = req.body;
+        const { title, description, imageUrl, type, conditionValue, isActive } = req.body;
         const template = await BadgeTemplate.findByIdAndUpdate(
             req.params.id,
-            { title, imageUrl, type, conditionValue, isActive },
+            { title, description, imageUrl, type, conditionValue, isActive },
             { new: true, runValidators: true }
         );
 
@@ -161,6 +163,77 @@ exports.triggerBadgeCheck = async (req, res) => {
                 ? `${newBadges.length} new badge(s) assigned`
                 : "No new badges earned",
             newBadges,
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ─── ADMIN: Manually assign a badge to any user (for testing / special awards) ─
+
+exports.manualAssignBadge = async (req, res) => {
+    try {
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ success: false, message: "Admin access required" });
+        }
+
+        const { userId, badgeTemplateId } = req.body;
+
+        if (!userId || !badgeTemplateId) {
+            return res.status(400).json({
+                success: false,
+                message: "userId and badgeTemplateId are required",
+            });
+        }
+
+        const template = await BadgeTemplate.findById(badgeTemplateId);
+        if (!template) {
+            return res.status(404).json({ success: false, message: "Badge template not found" });
+        }
+
+        // Prevent duplicate
+        const already = await Badges.findOne({ userId, badge: badgeTemplateId });
+        if (already) {
+            return res.status(409).json({ success: false, message: "User already has this badge" });
+        }
+
+        const badge = await Badges.create({ userId, badge: badgeTemplateId, earnedAt: new Date() });
+
+        // Keep User.badges array in sync
+        const User = require("../models/User");
+        await User.findByIdAndUpdate(userId, {
+            $addToSet: { badges: badgeTemplateId },
+        });
+
+        const populated = await badge.populate("badge", "title description imageUrl type conditionValue");
+
+        res.status(201).json({
+            success: true,
+            message: "Badge manually assigned",
+            badge: populated,
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ─── ADMIN: Upload badge image to Cloudinary ─────────────────────────────────
+
+exports.uploadBadgeImage = async (req, res) => {
+    try {
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ success: false, message: "Admin access required" });
+        }
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: "No image file provided" });
+        }
+
+        const result = await uploadToCloudinary(req.file.buffer, "badges");
+
+        res.status(200).json({
+            success: true,
+            message: "Image uploaded successfully",
+            imageUrl: result.secure_url,
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

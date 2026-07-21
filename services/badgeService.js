@@ -52,7 +52,7 @@ const checkAndAssignBadge = async (userId, milestoneType, currentValue) => {
         // 6. Return the populated assignments
         const populated = await Badges.find({
             _id: { $in: assignedBadges.map((b) => b._id) },
-        }).populate("badge", "title imageUrl type conditionValue");
+        }).populate("badge", "title description imageUrl type conditionValue");
 
         return populated;
     } catch (error) {
@@ -69,7 +69,7 @@ const checkAndAssignBadge = async (userId, milestoneType, currentValue) => {
  */
 const getUserBadges = async (userId) => {
     return Badges.find({ userId })
-        .populate("badge", "title imageUrl type conditionValue")
+        .populate("badge", "title description imageUrl type conditionValue")
         .sort({ earnedAt: -1 });
 };
 
