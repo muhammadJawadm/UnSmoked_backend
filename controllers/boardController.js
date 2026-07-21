@@ -469,43 +469,48 @@ exports.getUserOverviewStats = async (req, res) => {
     try {
         const userId = req.user.id;
 
-        let overview = await UserOverview.findOne({ userId });
-        if (!overview) {
-            overview = {
-                dailyCigarettesAvoided: 0,
-                dailyLifeRegained: 0,
-                dailyMoneySaved: 0,
-                monthlyCigarettesAvoided: 0,
-                monthlyLifeRegained: 0,
-                monthlyMoneySaved: 0,
-                totalCigarettesAvoided: 0,
-                totalLifeRegained: 0,
-                totalMoneySaved: 0,
-                lungsHealth: "Fair",
-                overallHealth: "Fair",
-            };
-        }
+        const [overview, userDoc] = await Promise.all([
+            UserOverview.findOne({ userId }),
+            User.findById(userId).select("currency"),
+        ]);
+
+        const stats = overview || {
+            dailyCigarettesAvoided: 0,
+            dailyLifeRegained: 0,
+            dailyMoneySaved: 0,
+            monthlyCigarettesAvoided: 0,
+            monthlyLifeRegained: 0,
+            monthlyMoneySaved: 0,
+            totalCigarettesAvoided: 0,
+            totalLifeRegained: 0,
+            totalMoneySaved: 0,
+            lungsHealth: "Fair",
+            overallHealth: "Fair",
+        };
+
+        const currencySymbol = userDoc?.currency === "EUR" ? "€" : "$";
 
         res.status(200).json({
             success: true,
+            currencySymbol,
             overview: {
                 daily: {
-                    cigarettesAvoided: overview.dailyCigarettesAvoided,
-                    lifeRegained: overview.dailyLifeRegained,
-                    moneySaved: overview.dailyMoneySaved,
+                    cigarettesAvoided: stats.dailyCigarettesAvoided,
+                    lifeRegained: stats.dailyLifeRegained,
+                    moneySaved: stats.dailyMoneySaved,
                 },
                 monthly: {
-                    cigarettesAvoided: overview.monthlyCigarettesAvoided,
-                    lifeRegained: overview.monthlyLifeRegained,
-                    moneySaved: overview.monthlyMoneySaved,
+                    cigarettesAvoided: stats.monthlyCigarettesAvoided,
+                    lifeRegained: stats.monthlyLifeRegained,
+                    moneySaved: stats.monthlyMoneySaved,
                 },
                 lifetime: {
-                    cigarettesAvoided: overview.totalCigarettesAvoided,
-                    lifeRegained: overview.totalLifeRegained,
-                    moneySaved: overview.totalMoneySaved,
+                    cigarettesAvoided: stats.totalCigarettesAvoided,
+                    lifeRegained: stats.totalLifeRegained,
+                    moneySaved: stats.totalMoneySaved,
                 },
-                lungsHealth: overview.lungsHealth,
-                overallHealth: overview.overallHealth,
+                lungsHealth: stats.lungsHealth,
+                overallHealth: stats.overallHealth,
             },
         });
     } catch (error) {

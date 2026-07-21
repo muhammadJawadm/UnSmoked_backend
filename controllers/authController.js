@@ -148,7 +148,7 @@ const deleteUserCascade = async (userId, session = null) => {
 };
 
 exports.registerUser = async (req, res) => {
-    let { name, email, phone, password } = req.body;
+    let { name, email, phone, password, currency } = req.body;
     try {
 
         if (!email) {
@@ -173,7 +173,13 @@ exports.registerUser = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const newUser = new User({ name, email, phone, password: hashedPassword });
+        const newUser = new User({
+            name,
+            email,
+            phone,
+            password: hashedPassword,
+            currency: ["USD", "EUR"].includes(currency) ? currency : "USD",
+        });
 
         await newUser.save();
 
@@ -596,6 +602,7 @@ exports.getUserProfile = async (req, res) => {
             success: true,
             user: {
                 ...user.toObject(),
+                currencySymbol: user.currency === "EUR" ? "€" : "$",
                 xp: progress.xp,
                 level: progress.level,
                 challengesCompleted: progress.challengesCompleted,
@@ -659,6 +666,7 @@ exports.getUserById = async (req, res) => {
             success: true,
             user: {
                 ...user.toObject(),
+                currencySymbol: user.currency === "EUR" ? "€" : "$",
                 xp: progress.xp,
                 level: progress.level,
                 challengesCompleted: progress.challengesCompleted,
@@ -714,6 +722,12 @@ exports.updateUser = async (req, res) => {
         if (req.body.amount_of_cigarettes_per_pack) user.amount_of_cigarettes_per_pack = req.body.amount_of_cigarettes_per_pack;
         if (req.body.health_goal) user.health_goal = req.body.health_goal;
         if (req.body.about_me) user.about_me = req.body.about_me;
+        if (req.body.currency) {
+            if (!["USD", "EUR"].includes(req.body.currency)) {
+                return res.status(400).json({ success: false, message: "currency must be USD or EUR" });
+            }
+            user.currency = req.body.currency;
+        }
         if (req.body.fcm_token) {
             user.fcm_token = req.body.fcm_token;
         }

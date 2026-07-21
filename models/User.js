@@ -17,6 +17,7 @@ const userSchema = new mongoose.Schema({
     amount_of_cigarettes_per_pack: { type: Number, default: 0 },
     health_goal: { type: String, default: "" },
     about_me: { type: String, default: "" },
+    currency: { type: String, enum: ["USD", "EUR"], default: "USD" },
     fcm_token: { type: String, default: "" },
     badges: [
         { type: mongoose.Schema.Types.ObjectId, ref: "BadgeTemplate" },
