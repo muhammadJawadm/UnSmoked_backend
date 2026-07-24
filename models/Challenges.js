@@ -25,7 +25,6 @@ const challengeSchema = new mongoose.Schema(
         durationDays: { type: Number, default: 1, min: 1 },
         boardSize: { type: Number, default: 50 },
         xpReward: { type: Number, default: 50, min: 0 },
-        description: { type: String, default: "" },
 
         // Mode
         mode: {
@@ -45,6 +44,7 @@ const challengeSchema = new mongoose.Schema(
             enum: ["pending", "waiting", "active", "completed", "cancelled"],
             default: "pending",
         },
+        scheduledDate: { type: Date, default: null },
         startAt: { type: Date, default: null },
         endsAt: { type: Date, default: null },
 

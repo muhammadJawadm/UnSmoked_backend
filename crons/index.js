@@ -4,9 +4,10 @@
  *              All intervals are registered here and exported via startCronJobs().
  */
 
-const Challenge          = require("../models/Challenges");
+const Challenge            = require("../models/Challenges");
 const ChallengeParticipant = require("../models/ChallengeParticipant");
-const Competition        = require("../models/Competition");
+const DailyBoard           = require("../models/DailyBoard");
+const Competition          = require("../models/Competition");
 const { addXP }          = require("../utils/xpSystem");
 const { checkAndAssignBadge } = require("../services/badgeService");
 const sendNotificationToUsers = require("../utils/sendNotification");
@@ -14,6 +15,91 @@ const sendNotificationToUsers = require("../utils/sendNotification");
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const FIVE_MINUTES = 5 * 60 * 1000;
+
+// ─── Helpers (mirrors challengesController — kept here to avoid circular deps) ─
+
+const getEndOfDay = (date) => {
+    const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    d.setUTCHours(23, 59, 59, 999);
+    return d;
+};
+
+const createBoardsForAccepted = async (challengeId, boardSize) => {
+    const accepted = await ChallengeParticipant.find({
+        challengeId,
+        inviteStatus: "accepted",
+    }).select("userId");
+
+    const today = new Date();
+    const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const smokes = new Array(boardSize).fill(null);
+
+    for (const p of accepted) {
+        await DailyBoard.findOneAndUpdate(
+            { challengeId, userId: p.userId, date: todayUTC },
+            { $setOnInsert: { challengeId, userId: p.userId, day: 1, date: todayUTC, smokes } },
+            { upsert: true, new: true }
+        );
+    }
+};
+
+// ─── Challenge Auto-Start ─────────────────────────────────────────────────────
+
+async function autoStartChallenges() {
+    try {
+        const now = new Date();
+
+        const toStart = await Challenge.find({
+            status: "waiting",
+            scheduledDate: { $lte: now },
+        }).lean();
+
+        for (const challenge of toStart) {
+            try {
+                const acceptedCount = await ChallengeParticipant.countDocuments({
+                    challengeId: challenge._id,
+                    inviteStatus: "accepted",
+                });
+
+                // Need at least 2 (creator + 1 invitee) to run a meaningful challenge
+                if (acceptedCount < 2) {
+                    await Challenge.findByIdAndUpdate(challenge._id, { status: "cancelled" });
+                    console.log(`[Cron] Cancelled challenge ${challenge._id} — not enough accepted participants`);
+                    continue;
+                }
+
+                const startAt = now;
+                const endsAt = getEndOfDay(startAt);
+
+                await Challenge.findByIdAndUpdate(challenge._id, {
+                    status: "active",
+                    startAt,
+                    endsAt,
+                });
+
+                await createBoardsForAccepted(challenge._id, challenge.boardSize || 50);
+
+                const accepted = await ChallengeParticipant.find({
+                    challengeId: challenge._id,
+                    inviteStatus: "accepted",
+                }).select("userId");
+
+                await sendNotificationToUsers(
+                    accepted.map((p) => p.userId.toString()),
+                    "Challenge Started! 🚀",
+                    "Your scheduled challenge has started. Give it your best!",
+                    { type: "challenge_started", challengeId: challenge._id.toString() }
+                );
+
+                console.log(`[Cron] Auto-started challenge ${challenge._id}`);
+            } catch (err) {
+                console.error(`[Cron] Failed to start challenge ${challenge._id}:`, err.message);
+            }
+        }
+    } catch (error) {
+        console.error("[Cron] Challenge auto-start error:", error);
+    }
+}
 
 // ─── Challenge Auto-Complete ──────────────────────────────────────────────────
 
@@ -154,6 +240,7 @@ async function autoManageCompetitions() {
  * Call this once after the server has started listening.
  */
 function startCronJobs() {
+    setInterval(autoStartChallenges,     FIVE_MINUTES);
     setInterval(autoCompleteChallenges,  FIVE_MINUTES);
     setInterval(autoManageCompetitions,  FIVE_MINUTES);
     console.log("[Cron] All scheduled jobs started (interval: 5 min)");

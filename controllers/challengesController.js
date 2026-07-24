@@ -249,10 +249,8 @@ exports.createChallenge = async (req, res) => {
             mode,
             sourceType,
             templateId,
-            durationDays,
             boardSize,
-            xpReward,
-            description,
+            scheduledDate,
         } = req.body;
 
         // Validate mode
@@ -271,7 +269,24 @@ exports.createChallenge = async (req, res) => {
             });
         }
 
-        let challengeData = { createdBy, mode, sourceType };
+        // Validate scheduledDate — required and must be in the future
+        if (!scheduledDate) {
+            return res.status(400).json({ success: false, message: "scheduledDate is required" });
+        }
+        const parsedDate = new Date(scheduledDate);
+        if (isNaN(parsedDate.getTime())) {
+            return res.status(400).json({ success: false, message: "scheduledDate is not a valid date" });
+        }
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        if (parsedDate < todayStart) {
+            return res.status(400).json({ success: false, message: "scheduledDate must be today or a future date" });
+        }
+
+        // durationDays is always 1
+        const durationDays = 1;
+
+        let challengeData = { createdBy, mode, sourceType, durationDays, scheduledDate: parsedDate };
 
         // ── Preset: copy fields from template ──────────────────────────────
         if (sourceType === "preset") {
@@ -292,31 +307,22 @@ exports.createChallenge = async (req, res) => {
                 });
             }
 
+            const resolvedBoardSize = template.boardSize || 50;
             challengeData = {
                 ...challengeData,
                 templateId: template._id,
-                durationDays: template.durationDays,
-                boardSize: template.boardSize || 50,
-                xpReward: xpReward !== undefined ? Number(xpReward) : template.xpReward,
-                description: template.description || "",
+                boardSize: resolvedBoardSize,
+                xpReward: resolvedBoardSize * 2,
             };
         }
 
         // ── Custom: use fields from request body ───────────────────────────
         if (sourceType === "custom") {
-            if (!durationDays || isNaN(durationDays) || Number(durationDays) < 1) {
-                return res.status(400).json({
-                    success: false,
-                    message: "durationDays must be a number >= 1",
-                });
-            }
-
+            const resolvedBoardSize = boardSize ? Number(boardSize) : 50;
             challengeData = {
                 ...challengeData,
-                durationDays: Number(durationDays),
-                boardSize: boardSize ? Number(boardSize) : 50,
-                xpReward: xpReward ? Number(xpReward) : 50,
-                description: description || "",
+                boardSize: resolvedBoardSize,
+                xpReward: resolvedBoardSize * 2,
             };
         }
 
@@ -336,7 +342,7 @@ exports.createChallenge = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: "Challenge created. Invite players to move it to 'waiting'",
+            message: "Challenge created. Invite players — challenge will auto-start on the scheduled date.",
             challenge: await enrichChallengeCreatorXp(populated),
         });
     } catch (error) {
@@ -630,8 +636,6 @@ exports.respondToInvite = async (req, res) => {
         participant.respondedAt = new Date();
         await participant.save();
 
-        let challengeActivated = false;
-
         if (action === "accept") {
             // ── Block if user already has an active challenge ──────────────
             const existingActive = await hasActiveChallenge(userId);
@@ -647,30 +651,14 @@ exports.respondToInvite = async (req, res) => {
                     activeChallengeId: existingActive._id,
                 });
             }
-
-            challengeActivated = await tryAutoActivate(challenge);
-
-            if (challengeActivated) {
-                // Notify all accepted participants that challenge is starting
-                const accepted = await ChallengeParticipant.find({
-                    challengeId: id,
-                    inviteStatus: "accepted",
-                }).select("userId");
-
-                await sendNotificationToUsers(
-                    accepted.map((p) => p.userId.toString()),
-                    "Challenge Started! 🚀",
-                    "Your challenge is now active. Give it your best!",
-                    { type: "challenge_started", challengeId: challenge._id.toString() }
-                );
-            }
         }
 
         res.status(200).json({
             success: true,
-            message: action === "accept" ? "Challenge accepted!" : "Challenge declined",
+            message: action === "accept"
+                ? "Challenge accepted! It will start automatically on the scheduled date."
+                : "Challenge declined",
             participant,
-            challengeActivated,
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -1206,31 +1194,42 @@ exports.getLeaderboard = async (req, res) => {
             inviteStatus: "accepted",
         }).populate("userId", "name profile_picture");
 
-        // Compute avoidance rate = avoided / (avoided + smoked) for each participant
-        const withRates = participants.map((p) => {
-            const avoided = p.challengeBoardStats.totalCigarettesAvoided;
-            const smoked  = p.challengeBoardStats.totalCigarettesSmoked;
-            const total   = avoided + smoked;
-            const avoidanceRate = total > 0 ? avoided / total : 0;
-            return { p, avoided, smoked, avoidanceRate };
-        });
+        // Fetch personal smoke-free days for each participant in parallel
+        const smokeFreePerParticipant = await Promise.all(
+            participants.map((p) =>
+                DailyBoard.countDocuments({
+                    userId: p.userId._id,
+                    challengeId: null,
+                    cigarettesSmoked: 0,
+                    cigarettesAvoided: { $gt: 0 },
+                })
+            )
+        );
 
-        // Rank by avoidance rate descending (higher rate = better)
-        withRates.sort((a, b) => b.avoidanceRate - a.avoidanceRate);
+        // Build entries with smokeFreeDay then sort descending
+        const withData = participants.map((p, i) => ({
+            p,
+            smokeFreeDay: smokeFreePerParticipant[i],
+        }));
 
-        const ranked = withRates.map(({ p, avoided, smoked, avoidanceRate }, index) => ({
+        withData.sort((a, b) => b.smokeFreeDay - a.smokeFreeDay);
+
+        const ranked = withData.map(({ p, smokeFreeDay }, index) => ({
             rank: index + 1,
             user: p.userId,
-            cigarettesAvoided: avoided,
-            cigarettesSmoked: smoked,
-            avoidanceRate: Math.round(avoidanceRate * 100), // 0–100 percentage
+            smokeFreeDay,
+            cigarettesAvoided: p.challengeBoardStats.totalCigarettesAvoided,
+            cigarettesSmoked:  p.challengeBoardStats.totalCigarettesSmoked,
             isMe: p.userId._id.toString() === userId,
             xpEarned: p.xpEarned,
         }));
 
-        const myAvoided = myParticipant.challengeBoardStats.totalCigarettesAvoided;
-        const mySmoked  = myParticipant.challengeBoardStats.totalCigarettesSmoked;
-        const myTotal   = myAvoided + mySmoked;
+        const mySmokeFreeDay = await DailyBoard.countDocuments({
+            userId,
+            challengeId: null,
+            cigarettesSmoked: 0,
+            cigarettesAvoided: { $gt: 0 },
+        });
 
         const timeLeftMs =
             challenge.endsAt ? Math.max(0, new Date(challenge.endsAt) - new Date()) : null;
@@ -1241,9 +1240,9 @@ exports.getLeaderboard = async (req, res) => {
             leaderboard: ranked,
             timeLeftMs,
             myStats: {
-                cigarettesAvoided: myAvoided,
-                cigarettesSmoked:  mySmoked,
-                avoidanceRate:     myTotal > 0 ? Math.round((myAvoided / myTotal) * 100) : 0,
+                smokeFreeDay: mySmokeFreeDay,
+                cigarettesAvoided: myParticipant.challengeBoardStats.totalCigarettesAvoided,
+                cigarettesSmoked:  myParticipant.challengeBoardStats.totalCigarettesSmoked,
             },
         });
     } catch (error) {

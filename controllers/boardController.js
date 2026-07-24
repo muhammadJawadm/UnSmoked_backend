@@ -1027,6 +1027,27 @@ exports.markChallengeSlot = async (req, res) => {
         };
         await participant.save();
 
+        // ── Mirror to personal board so badges & leaderboard ranking stay current ──
+        const { dailyBoard: personalBoard } = await ensureTodayBoard(userId);
+
+        if (index < personalBoard.smokes.length) {
+            personalBoard.smokes[index] = status;
+            personalBoard.markModified("smokes");
+            recalculateDailyStats(personalBoard, costPerCigarette);
+            await personalBoard.save();
+
+            const today = getTodayDate();
+            const month = today.getUTCMonth() + 1;
+            const year  = today.getUTCFullYear();
+
+            const monthlyBoard = await MonthlyBoard.findOne({ userId, month, year });
+            if (monthlyBoard) {
+                await recalculateMonthlyStats(monthlyBoard);
+                await monthlyBoard.save();
+                await updateOverview(userId, personalBoard, monthlyBoard);
+            }
+        }
+
         res.status(200).json({
             success: true,
             message: "Challenge slot updated successfully",
