@@ -582,7 +582,7 @@ exports.getUserProfile = async (req, res) => {
     const { id } = req.user; // From JWT token
 
     try {
-        const user = await User.findById(id).select("-password").populate("badges");
+        const user = await User.findById(id).select("-password -badges");
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
         }
