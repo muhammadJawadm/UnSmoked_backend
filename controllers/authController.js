@@ -610,8 +610,6 @@ exports.getUserProfile = async (req, res) => {
             BadgeTemplate.find({ type: "streak", isActive: true }).sort({ conditionValue: 1 }),
         ]);
 
-        // Current badge = highest conditionValue the user has already crossed
-        // Next badge    = lowest conditionValue still ahead of the user
         let currentBadge = null;
         let nextBadge    = null;
 
