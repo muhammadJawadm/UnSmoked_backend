@@ -18,6 +18,7 @@ const Notification = require("../models/Notifications");
 const Contact = require("../models/Contact");
 const Feedback = require("../models/Feedback");
 const Badges = require("../models/Badges");
+const BadgeTemplate = require("../models/BadgeTemplate");
 const UserMilestone = require("../models/UserMilestone");
 const UserOverview = require("../models/UserOverview");
 const DailyBoard = require("../models/DailyBoard");
@@ -598,6 +599,36 @@ exports.getUserProfile = async (req, res) => {
         // Fetch user overview (cigarettes avoided, life regained, money saved, health)
         const overview = await getUserOverview(id);
 
+        // ── Badge progress ────────────────────────────────────────────────────
+        const [smokeFreeDay, streakTemplates] = await Promise.all([
+            DailyBoard.countDocuments({
+                userId: id,
+                challengeId: null,
+                cigarettesSmoked: 0,
+                cigarettesAvoided: { $gt: 0 },
+            }),
+            BadgeTemplate.find({ type: "streak", isActive: true }).sort({ conditionValue: 1 }),
+        ]);
+
+        // Current badge = highest conditionValue the user has already crossed
+        // Next badge    = lowest conditionValue still ahead of the user
+        let currentBadge = null;
+        let nextBadge    = null;
+
+        for (const template of streakTemplates) {
+            if (template.conditionValue <= smokeFreeDay) {
+                currentBadge = template;
+            } else if (!nextBadge) {
+                nextBadge = template;
+            }
+        }
+
+        const badgeProgress = {
+            smokeFreeDay,
+            currentBadge,
+            nextBadge,
+        };
+
         res.status(200).json({
             success: true,
             user: {
@@ -629,6 +660,7 @@ exports.getUserProfile = async (req, res) => {
                     lungsHealth: overview.lungsHealth,
                     overallHealth: overview.overallHealth,
                 },
+                badgeProgress,
             }
         });
     } catch (error) {
