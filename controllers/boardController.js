@@ -9,6 +9,7 @@ const Badges = require("../models/Badges");
 const ChallengeParticipant = require("../models/ChallengeParticipant");
 const Challenge = require("../models/Challenges");
 const { enrichChallengeCreatorXp } = require("../utils/challengeUtils");
+const { getLocalToday } = require("../utils/timezone");
 const isDuplicateKeyError = (error) => error && error.code === 11000;
 
 // Extends an existing challenge board's smokes array to match boardSize if it was
@@ -37,12 +38,12 @@ const getCostPerCigarette = (user) => {
 };
 
 /**
- * Helper: get today's date at midnight UTC
+ * Helper: get "today" as a date-only value.
+ * Pass a user's IANA timezone (e.g. "America/New_York") to get their local
+ * calendar date; omit it to get the UTC calendar date (used for anything
+ * shared across users, like challenge day boundaries).
  */
-const getTodayDate = () => {
-    const now = new Date();
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-};
+const getTodayDate = (timezone) => getLocalToday(timezone);
 
 /**
  * Helper: get today's day number (day of the month in UTC: 1-31)
@@ -132,7 +133,7 @@ const ensureTodayBoard = async (userId) => {
     const user = await User.findById(userId);
     if (!user) throw new Error("User not found");
 
-    const today = getTodayDate();
+    const today = getTodayDate(user.timezone);
     const cigarettesPerDay = user.cigarettes_per_day || 0;
 
     if (cigarettesPerDay <= 0) {
@@ -378,7 +379,7 @@ exports.markSlot = async (req, res) => {
             await personalBoard.save();
 
             // Update monthly board stats and overview only when personal board changed
-            const today = getTodayDate();
+            const today = getTodayDate(user.timezone);
             const month = today.getUTCMonth() + 1;
             const year  = today.getUTCFullYear();
 
@@ -416,8 +417,15 @@ exports.markSlot = async (req, res) => {
 exports.getMonthlyBoard = async (req, res) => {
     try {
         const userId = req.user.id;
-        const month = parseInt(req.query.month) || new Date().getUTCMonth() + 1;
-        const year = parseInt(req.query.year) || new Date().getUTCFullYear();
+        let month = parseInt(req.query.month);
+        let year = parseInt(req.query.year);
+
+        if (!month || !year) {
+            const user = await User.findById(userId).select("timezone");
+            const today = getTodayDate(user?.timezone);
+            if (!month) month = today.getUTCMonth() + 1;
+            if (!year) year = today.getUTCFullYear();
+        }
 
         const monthlyBoard = await MonthlyBoard.findOne({ userId, month, year }).populate("dailyBoards");
 
@@ -438,7 +446,8 @@ exports.getMonthlyBoard = async (req, res) => {
 exports.getTodayImpact = async (req, res) => {
     try {
         const userId = req.user.id;
-        const today = getTodayDate();
+        const user = await User.findById(userId).select("timezone");
+        const today = getTodayDate(user?.timezone);
 
         // Personal board only (challengeId: null)
         const dailyBoard = await DailyBoard.findOne({ userId, challengeId: null, date: today });
@@ -532,13 +541,14 @@ exports.getStats = async (req, res) => {
             return res.status(400).json({ success: false, message: "type must be 'week', 'month', or 'year'" });
         }
 
-        const now = new Date();
+        const user = await User.findById(userId).select("timezone");
+        const today = getTodayDate(user?.timezone);
 
         // ─── WEEK: each of the last 7 days ───
         if (type === "week") {
             const days = [];
             for (let i = 6; i >= 0; i--) {
-                const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
+                const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - i));
                 days.push(d);
             }
 
@@ -587,8 +597,8 @@ exports.getStats = async (req, res) => {
 
         // ─── MONTH: each day of the current month ───
         if (type === "month") {
-            const year  = now.getUTCFullYear();
-            const month = now.getUTCMonth(); // 0-indexed
+            const year  = today.getUTCFullYear();
+            const month = today.getUTCMonth(); // 0-indexed
             const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
 
             const monthStart = new Date(Date.UTC(year, month, 1));
@@ -641,7 +651,7 @@ exports.getStats = async (req, res) => {
 
         // ─── YEAR: each month of the current year ───
         if (type === "year") {
-            const year = now.getUTCFullYear();
+            const year = today.getUTCFullYear();
 
             const monthlyBoards = await MonthlyBoard.find({ userId, year });
 
@@ -1036,7 +1046,7 @@ exports.markChallengeSlot = async (req, res) => {
             recalculateDailyStats(personalBoard, costPerCigarette);
             await personalBoard.save();
 
-            const today = getTodayDate();
+            const today = getTodayDate(user.timezone);
             const month = today.getUTCMonth() + 1;
             const year  = today.getUTCFullYear();
 

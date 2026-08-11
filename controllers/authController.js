@@ -7,6 +7,7 @@ const generateToken = require("../utils/jwt");
 const UserProgress = require("../models/UserProgress");
 const { calculateLevel } = require("../utils/xpSystem");
 const { getUserOverview } = require("../utils/overviewSystem");
+const { isValidTimezone } = require("../utils/timezone");
 const { OAuth2Client } = require("google-auth-library");
 const Post = require("../models/Post");
 const Blog = require("../models/Blog");
@@ -541,7 +542,8 @@ exports.completeProfile = async (req, res) => {
         amount_of_cigarettes_per_pack,
         health_goal,
         about_me,
-        profile_picture // Simple URL string from frontend (they handle Cloudinary upload)
+        profile_picture, // Simple URL string from frontend (they handle Cloudinary upload)
+        timezone // IANA tz name, e.g. "America/New_York"
     } = req.body;
 
     try {
@@ -557,6 +559,13 @@ exports.completeProfile = async (req, res) => {
         if (amount_of_cigarettes_per_pack !== undefined) user.amount_of_cigarettes_per_pack = amount_of_cigarettes_per_pack;
         if (health_goal !== undefined) user.health_goal = health_goal;
         if (about_me !== undefined) user.about_me = about_me;
+
+        if (timezone !== undefined) {
+            if (!isValidTimezone(timezone)) {
+                return res.status(400).json({ success: false, message: "Invalid timezone" });
+            }
+            user.timezone = timezone;
+        }
 
         // Accept profile picture URL from frontend (they handle Cloudinary upload)
         if (profile_picture) {
@@ -760,6 +769,12 @@ exports.updateUser = async (req, res) => {
         }
         if (req.body.fcm_token) {
             user.fcm_token = req.body.fcm_token;
+        }
+        if (req.body.timezone) {
+            if (!isValidTimezone(req.body.timezone)) {
+                return res.status(400).json({ success: false, message: "Invalid timezone" });
+            }
+            user.timezone = req.body.timezone;
         }
 
         user.updated_at = Date.now();

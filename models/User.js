@@ -18,6 +18,7 @@ const userSchema = new mongoose.Schema({
     health_goal: { type: String, default: "" },
     about_me: { type: String, default: "" },
     currency: { type: String, enum: ["USD", "EUR"], default: "USD" },
+    timezone: { type: String, default: "UTC" }, // IANA tz name, e.g. "America/New_York" — sent by the mobile app
     fcm_token: { type: String, default: "" },
     badges: [
         { type: mongoose.Schema.Types.ObjectId, ref: "BadgeTemplate" },
