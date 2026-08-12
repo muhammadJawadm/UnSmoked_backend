@@ -7,16 +7,13 @@ const sendNotificationToUsers = require("../utils/sendNotification");
 
 exports.createTask = async (req, res) => {
     try {
-        const { title, description, goal, requirement, proof, xps_points } = req.body;
+        const { title, description, xps_points } = req.body;
         if (!title) return res.status(400).json({ success: false, message: "title is required" });
         if (!description) return res.status(400).json({ success: false, message: "description is required" });
         const task = await Task.create({
             title,
             description,
-            goal:        goal        ?? "",
-            requirement: requirement ?? "",
-            proof:       proof       ?? null,
-            xps_points:  xps_points  ?? 0,
+            xps_points: xps_points ?? 0,
         });
         res.status(201).json({ success: true, message: "Task created successfully", task });
     } catch (error) {
@@ -65,11 +62,11 @@ exports.getTaskById = async (req, res) => {
 
 exports.updateTask = async (req, res) => {
     try {
-        const { title, description, goal, requirement, proof, xps_points } = req.body;
+        const { title, description, xps_points } = req.body;
 
         const task = await Task.findByIdAndUpdate(
             req.params.id,
-            { title, description, goal, requirement, proof, xps_points },
+            { title, description, xps_points },
             { new: true, omitUndefined: true }
         );
         if (!task) return res.status(404).json({ success: false, message: "Task not found" });
@@ -168,7 +165,7 @@ exports.assignChallengeTask = async (req, res) => {
             }
             resolvedTaskIds = taskIds;
         } else {
-            // ── Custom task: just title + description, no goal/requirement/proof/xps_points ──
+            // ── Custom task: just title + description ──
             const customTask = await Task.create({ title, description });
             resolvedTaskIds = [customTask._id];
         }
@@ -192,7 +189,7 @@ exports.assignChallengeTask = async (req, res) => {
 
         const savedAssignments = await ChallengeTaskAssignment.find({ _id: { $in: insertedIds } })
             .populate('assignedBy', 'name profile_picture')
-            .populate('taskId', 'title description goal requirement proof xps_points')
+            .populate('taskId', 'title description xps_points')
             .lean();
 
         const formattedAssignments = savedAssignments.map(a => ({
@@ -208,10 +205,6 @@ exports.assignChallengeTask = async (req, res) => {
                 _id:         a.taskId._id?.toString() ?? null,
                 title:       a.taskId.title       ?? null,
                 description: a.taskId.description ?? null,
-                goal:        a.taskId.goal        ?? null,
-                requirement: a.taskId.requirement ?? null,
-                proof:       a.taskId.proof       ?? null,
-        
                 xps_points:  a.taskId.xps_points  ?? 0,
             } : null,
             note:        a.note ?? "",
@@ -256,10 +249,6 @@ const formatAssignment = (a) => ({
         _id:         a.taskId._id?.toString() ?? null,
         title:       a.taskId.title       ?? null,
         description: a.taskId.description ?? null,
-        goal:        a.taskId.goal        ?? null,
-        requirement: a.taskId.requirement ?? null,
-        proof:       a.taskId.proof       ?? null,
-
         xps_points:  a.taskId.xps_points  ?? 0,
     } : null,
     note:        a.note ?? "",
@@ -279,7 +268,7 @@ exports.getMyAssignedTasks = async (req, res) => {
 
         const raw = await ChallengeTaskAssignment.find(filter)
             .populate('assignedBy', 'name profile_picture')
-            .populate('taskId', 'title description goal requirement proof xps_points')
+            .populate('taskId', 'title description xps_points')
             .sort({ createdAt: -1 })
             .lean();
 
@@ -301,7 +290,7 @@ exports.getTasksIAssigned = async (req, res) => {
 
         const raw = await ChallengeTaskAssignment.find(filter)
             .populate('assignedBy', 'name profile_picture')
-            .populate('taskId', 'title description goal requirement proof xps_points')
+            .populate('taskId', 'title description xps_points')
             .sort({ createdAt: -1 })
             .lean();
 
