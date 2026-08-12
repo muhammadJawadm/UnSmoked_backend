@@ -95,7 +95,7 @@ exports.deleteTask = async (req, res) => {
 exports.assignChallengeTask = async (req, res) => {
     try {
         const assignedBy = req.user.id;
-        const { challengeId, assignedTo, note, taskIds } = req.body;
+        const { challengeId, assignedTo, note, taskIds, title, description } = req.body;
 
         // ── Validate required fields ──────────────────────────────────
         if (!challengeId) {
@@ -104,8 +104,17 @@ exports.assignChallengeTask = async (req, res) => {
         if (!Array.isArray(assignedTo) || assignedTo.length === 0) {
             return res.status(400).json({ success: false, message: "assignedTo (array of loser userIds) is required and must not be empty" });
         }
-        if (!Array.isArray(taskIds) || taskIds.length === 0) {
-            return res.status(400).json({ success: false, message: "taskIds must be a non-empty array of task IDs" });
+
+        // Either reference existing task(s) via taskIds, or provide a one-off
+        // custom task via title + description — not both.
+        const hasTaskIds = Array.isArray(taskIds) && taskIds.length > 0;
+        const hasCustomTask = !!title && !!description;
+
+        if (!hasTaskIds && !hasCustomTask) {
+            return res.status(400).json({
+                success: false,
+                message: "Provide either taskIds (non-empty array of task IDs) or a custom task (title + description)",
+            });
         }
 
         // ── Verify challenge exists and is completed ─────────────────────
@@ -146,18 +155,28 @@ exports.assignChallengeTask = async (req, res) => {
             }
         }
 
-        // ── Verify all taskIds exist ───────────────────────────────
-        for (const [i, taskId] of taskIds.entries()) {
-            const exists = await Task.exists({ _id: taskId });
-            if (!exists) {
-                return res.status(404).json({ success: false, message: `taskIds[${i}]: Task "${taskId}" not found` });
+        // ── Resolve the task(s) to assign ───────────────────────────────
+        let resolvedTaskIds;
+
+        if (hasTaskIds) {
+            // ── Verify all taskIds exist ───────────────────────────────
+            for (const [i, taskId] of taskIds.entries()) {
+                const exists = await Task.exists({ _id: taskId });
+                if (!exists) {
+                    return res.status(404).json({ success: false, message: `taskIds[${i}]: Task "${taskId}" not found` });
+                }
             }
+            resolvedTaskIds = taskIds;
+        } else {
+            // ── Custom task: just title + description, no goal/requirement/proof/xps_points ──
+            const customTask = await Task.create({ title, description });
+            resolvedTaskIds = [customTask._id];
         }
 
         // ── Create one assignment per loser × per task ─────────────────
         const assignmentDocs = [];
         for (const loserId of assignedTo) {
-            for (const taskId of taskIds) {
+            for (const taskId of resolvedTaskIds) {
                 assignmentDocs.push({
                     challengeId,
                     assignedBy,
