@@ -713,14 +713,25 @@ exports.getLeaderboard = async (req, res) => {
 
         const userIds = users.map((u) => u._id);
 
-        // Fetch overviews, progress, and latest badge for all users in parallel
-        const [overviews, progresses, badges] = await Promise.all([
+        // Fetch overviews, progress, latest badge, and smoke-free day counts for all users in parallel
+        const [overviews, progresses, badges, smokeFreeCounts] = await Promise.all([
             UserOverview.find({ userId: { $in: userIds } }).lean(),
             UserProgress.find({ userId: { $in: userIds } }).lean(),
             Badges.find({ userId: { $in: userIds } })
                 .sort({ earnedAt: -1 })
                 .populate("badge", "title description imageUrl type")
                 .lean(),
+            DailyBoard.aggregate([
+                {
+                    $match: {
+                        userId: { $in: userIds },
+                        challengeId: null,
+                        cigarettesSmoked: 0,
+                        cigarettesAvoided: { $gt: 0 },
+                    },
+                },
+                { $group: { _id: "$userId", count: { $sum: 1 } } },
+            ]),
         ]);
 
         // Index by userId string for O(1) lookup
@@ -737,6 +748,9 @@ exports.getLeaderboard = async (req, res) => {
             if (!badgeMap[key]) badgeMap[key] = b; // already sorted by earnedAt desc
         });
 
+        const smokeFreeMap = {};
+        smokeFreeCounts.forEach((s) => { smokeFreeMap[s._id.toString()] = s.count; });
+
         // Build leaderboard entries
         const leaderboard = users.map((user) => {
             const key = user._id.toString();
@@ -748,6 +762,7 @@ exports.getLeaderboard = async (req, res) => {
                 userId: user._id,
                 name: user.name,
                 profilePicture: user.profile_picture || null,
+                smokeFreeDay: smokeFreeMap[key] || 0,
                 cigarettesAvoided: overview ? overview.totalCigarettesAvoided : 0,
                 lifeRegained: overview ? overview.totalLifeRegained : 0,   // in minutes
                 level: progress ? progress.level : 1,
@@ -762,8 +777,8 @@ exports.getLeaderboard = async (req, res) => {
             };
         });
 
-        // Sort by cigarettes avoided descending
-        leaderboard.sort((a, b) => b.cigarettesAvoided - a.cigarettesAvoided);
+        // Sort by smoke-free days descending
+        leaderboard.sort((a, b) => b.smokeFreeDay - a.smokeFreeDay);
 
         // Attach rank (based on full sorted list)
         leaderboard.forEach((entry, i) => { entry.rank = i + 1; });
