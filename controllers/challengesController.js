@@ -9,10 +9,12 @@ const Category = require("../models/Category");
 const User = require("../models/User");
 const UserProgress = require("../models/UserProgress");
 const ChallengeTaskAssignment = require("../models/ChallengeTaskAssignment");
-const { addXP } = require("../utils/xpSystem");
+const { recordChallengeCompletion } = require("../utils/xpSystem");
 const { checkAndAssignBadge } = require("../services/badgeService");
 const sendNotificationToUsers = require("../utils/sendNotification");
-const { enrichChallengeCreatorXp, enrichChallengesCreatorXp } = require("../utils/challengeUtils");
+const { enrichChallengeCreatorStats, enrichChallengesCreatorStats } = require("../utils/challengeUtils");
+const { getSmokeFreeStreaksBatch } = require("../utils/streak");
+const { resolveChallengeOutcome } = require("../utils/challengeOutcome");
 
 const TEST_CHALLENGE_DURATION_MS = 10 * 60 * 1000;
 
@@ -151,32 +153,30 @@ const tryAutoActivate = async (challenge) => {
     return true;
 };
 /**
- * Award XP + badges to all accepted participants of a completed challenge.
- * Safe to call multiple times — skips participants where xpEarned > 0.
+ * Record completion stats + badges for all accepted participants of a completed challenge.
+ * Safe to call multiple times — skips participants whose result was already recorded.
  */
-const awardXPToParticipants = async (challenge) => {
+const finalizeParticipantResults = async (challenge) => {
     const participants = await ChallengeParticipant.find({
         challengeId: challenge._id,
         inviteStatus: "accepted",
     }).sort({ progressValue: -1 });
 
     for (const p of participants) {
-        if (p.xpEarned > 0) continue; // already awarded
+        if (p.resultRecorded) continue; // already recorded
 
         const isWinner = challenge.winner?.toString() === p.userId.toString();
-        const xp = isWinner ? challenge.xpReward : Math.floor(challenge.xpReward / 2);
 
-        p.xpEarned = xp;
+        p.resultRecorded = true;
         await p.save();
 
-        const updatedProgress = await addXP(p.userId.toString(), xp, isWinner);
+        const updatedProgress = await recordChallengeCompletion(p.userId.toString(), isWinner);
         await checkAndAssignBadge(p.userId.toString(), "completion", updatedProgress.challengesCompleted);
-        await checkAndAssignBadge(p.userId.toString(), "milestone", updatedProgress.level);
 
         await sendNotificationToUsers(
             [p.userId.toString()],
             "Challenge Complete! 🏆",
-            `Your challenge has ended. +${xp} XP earned!`,
+            isWinner ? "You won the challenge! Check your results." : "Your challenge has ended. Check your results!",
             { type: "challenge_completed", challengeId: challenge._id.toString() }
         );
     }
@@ -215,7 +215,7 @@ exports.getChallengeById = async (req, res) => {
 
         const [acceptedCount, enrichedChallenge] = await Promise.all([
             ChallengeParticipant.countDocuments({ challengeId: id, inviteStatus: "accepted" }),
-            enrichChallengeCreatorXp(challenge),
+            enrichChallengeCreatorStats(challenge),
         ]);
 
         return res.status(200).json({
@@ -312,7 +312,6 @@ exports.createChallenge = async (req, res) => {
                 ...challengeData,
                 templateId: template._id,
                 boardSize: resolvedBoardSize,
-                xpReward: resolvedBoardSize * 2,
             };
         }
 
@@ -322,7 +321,6 @@ exports.createChallenge = async (req, res) => {
             challengeData = {
                 ...challengeData,
                 boardSize: resolvedBoardSize,
-                xpReward: resolvedBoardSize * 2,
             };
         }
 
@@ -343,7 +341,7 @@ exports.createChallenge = async (req, res) => {
         return res.status(201).json({
             success: true,
             message: "Challenge created. Invite players — challenge will auto-start on the scheduled date.",
-            challenge: await enrichChallengeCreatorXp(populated),
+            challenge: await enrichChallengeCreatorStats(populated),
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -517,7 +515,7 @@ exports.getMyInvites = async (req, res) => {
                 }));
 
                 if (inviteObj.challengeId && typeof inviteObj.challengeId === "object") {
-                    inviteObj.challengeId = await enrichChallengeCreatorXp(inviteObj.challengeId);
+                    inviteObj.challengeId = await enrichChallengeCreatorStats(inviteObj.challengeId);
                 }
 
                 return inviteObj;
@@ -568,7 +566,7 @@ exports.getChallengeDetail = async (req, res) => {
 
         const [acceptedCount, enrichedChallenge] = await Promise.all([
             ChallengeParticipant.countDocuments({ challengeId: id, inviteStatus: "accepted" }),
-            enrichChallengeCreatorXp(challenge),
+            enrichChallengeCreatorStats(challenge),
         ]);
 
         res.status(200).json({
@@ -696,7 +694,7 @@ exports.getWaitingRoom = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            challenge: await enrichChallengeCreatorXp(challenge),
+            challenge: await enrichChallengeCreatorStats(challenge),
             participants,
             acceptedCount,
             totalSlots,
@@ -1064,8 +1062,8 @@ exports.getMyChallenges = async (req, res) => {
             }
         }
 
-        // ── Enrich creator XP then paginate ──────────────────────────────────
-        resultList = await enrichChallengesCreatorXp(resultList);
+        // ── Enrich creator stats then paginate ────────────────────────────────
+        resultList = await enrichChallengesCreatorStats(resultList);
         const totalItems = resultList.length;
         const totalPages = Math.ceil(totalItems / pageSize) || 1;
         const items = resultList.slice(skip, skip + pageSize);
@@ -1192,24 +1190,15 @@ exports.getLeaderboard = async (req, res) => {
         const participants = await ChallengeParticipant.find({
             challengeId: id,
             inviteStatus: "accepted",
-        }).populate("userId", "name profile_picture");
+        }).populate("userId", "name profile_picture timezone createdAt");
 
-        // Fetch personal smoke-free days for each participant in parallel
-        const smokeFreePerParticipant = await Promise.all(
-            participants.map((p) =>
-                DailyBoard.countDocuments({
-                    userId: p.userId._id,
-                    challengeId: null,
-                    cigarettesSmoked: 0,
-                    cigarettesAvoided: { $gt: 0 },
-                })
-            )
-        );
+        // Current smoke-free streak for each participant (one batched query)
+        const streakMap = await getSmokeFreeStreaksBatch(participants.map((p) => p.userId));
 
         // Build entries with smokeFreeDay then sort descending
-        const withData = participants.map((p, i) => ({
+        const withData = participants.map((p) => ({
             p,
-            smokeFreeDay: smokeFreePerParticipant[i],
+            smokeFreeDay: streakMap.get(p.userId._id.toString()) || 0,
         }));
 
         withData.sort((a, b) => b.smokeFreeDay - a.smokeFreeDay);
@@ -1221,15 +1210,9 @@ exports.getLeaderboard = async (req, res) => {
             cigarettesAvoided: p.challengeBoardStats.totalCigarettesAvoided,
             cigarettesSmoked:  p.challengeBoardStats.totalCigarettesSmoked,
             isMe: p.userId._id.toString() === userId,
-            xpEarned: p.xpEarned,
         }));
 
-        const mySmokeFreeDay = await DailyBoard.countDocuments({
-            userId,
-            challengeId: null,
-            cigarettesSmoked: 0,
-            cigarettesAvoided: { $gt: 0 },
-        });
+        const mySmokeFreeDay = streakMap.get(userId) || 0;
 
         const timeLeftMs =
             challenge.endsAt ? Math.max(0, new Date(challenge.endsAt) - new Date()) : null;
@@ -1253,7 +1236,7 @@ exports.getLeaderboard = async (req, res) => {
 // ─── 14. Get Results / Complete Challenge — S17 / S18 ─────────────────────
 // POST /challenges/:id/complete
 // Called when the user wants to see final results after the challenge ends.
-// Safe to call multiple times — XP is awarded only once per participant.
+// Safe to call multiple times — results are recorded only once per participant.
 exports.completeChallenge = async (req, res) => {
     try {
         const { id } = req.params;
@@ -1278,6 +1261,8 @@ exports.completeChallenge = async (req, res) => {
         }
 
         // Only active challenges past endsAt (or already completed) can be finalized
+        let isVoid = false;
+
         if (challenge.status === "active") {
             if (challenge.endsAt && challenge.endsAt > new Date()) {
                 return res.status(400).json({
@@ -1286,21 +1271,18 @@ exports.completeChallenge = async (req, res) => {
                 });
             }
 
-            // Determine winner: highest cigarettesAvoided on the challenge board
-            const allParticipants = await ChallengeParticipant.find({
-                challengeId: id,
-                inviteStatus: "accepted",
-            }).sort({ "challengeBoardStats.totalCigarettesAvoided": -1 });
+            // Determine winner (or void the challenge if fewer than 2 participants engaged)
+            const outcome = await resolveChallengeOutcome(id);
+            isVoid = outcome.isVoid;
 
-            challenge.winner = allParticipants[0]?.userId || null;
-            challenge.status = "completed";
-            await challenge.save();
-
-            // Award XP to everyone (idempotent helper — skips already-awarded)
-            await awardXPToParticipants(challenge);
+            if (!isVoid) {
+                // Record results for everyone (idempotent helper — skips already-recorded)
+                const updatedChallenge = await Challenge.findById(id);
+                await finalizeParticipantResults(updatedChallenge);
+            }
         } else if (challenge.status === "completed") {
-            // Re-award anyone who missed XP (re-entrant safety)
-            await awardXPToParticipants(challenge);
+            // Catch anyone who missed being recorded (re-entrant safety)
+            await finalizeParticipantResults(challenge);
         } else {
             return res.status(400).json({
                 success: false,
@@ -1326,16 +1308,17 @@ exports.completeChallenge = async (req, res) => {
             userId,
         });
 
-        const enrichedPopulated = await enrichChallengeCreatorXp(populated);
+        const enrichedPopulated = await enrichChallengeCreatorStats(populated);
 
         res.status(200).json({
             success: true,
-            message: "Challenge completed",
+            message: isVoid
+                ? "Challenge removed — not enough participants engaged, so there is no winner or loser"
+                : "Challenge completed",
             challenge: enrichedPopulated,
             leaderboard: finalLeaderboard,
             myResult: updatedMyParticipant,
-            isWinner: enrichedPopulated.winner?._id.toString() === userId,
-            xpEarned: updatedMyParticipant?.xpEarned || 0,
+            isWinner: !isVoid && enrichedPopulated.winner?._id.toString() === userId,
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -1400,7 +1383,6 @@ exports.getMyActiveChallenge = async (req, res) => {
             user: p.userId,
             challengeBoardStats: p.challengeBoardStats,
             isMe: p.userId?._id?.toString() === userId,
-            xpEarned: p.xpEarned,
         }));
 
         const todayUTC = getTodayUTC();
@@ -1417,7 +1399,7 @@ exports.getMyActiveChallenge = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            challenge: await enrichChallengeCreatorXp(challenge),
+            challenge: await enrichChallengeCreatorStats(challenge),
             myParticipant,
             myStats: myParticipant?.challengeBoardStats || {
                 totalCigarettesAvoided: 0,
@@ -1540,7 +1522,6 @@ exports.getMatchHistory = async (req, res) => {
                 createdAt: challenge.createdAt,
                 startAt: challenge.startAt,
                 endsAt: challenge.endsAt,
-                xpReward: p.xpEarned, // Send actual XP earned
                 isWinner,
                 status: isWinner ? "won" : "lost",
                 participants: allParticipants.map(ap => ({

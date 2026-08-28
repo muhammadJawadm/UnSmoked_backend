@@ -5,9 +5,9 @@ const otpGenerator = require("otp-generator");
 const Otp = require("../models/Otp");
 const generateToken = require("../utils/jwt");
 const UserProgress = require("../models/UserProgress");
-const { calculateLevel } = require("../utils/xpSystem");
 const { getUserOverview } = require("../utils/overviewSystem");
 const { isValidTimezone } = require("../utils/timezone");
+const { getSmokeFreeStreak } = require("../utils/streak");
 const { OAuth2Client } = require("google-auth-library");
 const Post = require("../models/Post");
 const Blog = require("../models/Blog");
@@ -575,10 +575,13 @@ exports.completeProfile = async (req, res) => {
         user.updated_at = Date.now();
         await user.save();
 
+        const userObj = user.toObject();
+        userObj.currency = user.currency === "EUR" ? "€" : "$";
+
         res.status(200).json({
             success: true,
             message: "Profile updated successfully",
-            user
+            user: userObj
         });
     } catch (error) {
         console.error(error);
@@ -596,26 +599,18 @@ exports.getUserProfile = async (req, res) => {
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        // Fetch user progress (XP, level, challenges completed)
+        // Fetch user progress (challenges completed / win-loss record)
         let progress = await UserProgress.findOne({ userId: id });
         if (!progress) {
-            progress = { xp: 0, level: 1, challengesCompleted: 0, totalWins: 0, totalLosses: 0 };
+            progress = { challengesCompleted: 0, totalWins: 0, totalLosses: 0 };
         }
-
-        const xpForNextLevel = progress.level * 500;
-        const xpProgress = progress.xp % 500;
 
         // Fetch user overview (cigarettes avoided, life regained, money saved, health)
         const overview = await getUserOverview(id);
 
         // ── Badge progress ────────────────────────────────────────────────────
         const [smokeFreeDay, streakTemplates] = await Promise.all([
-            DailyBoard.countDocuments({
-                userId: id,
-                challengeId: null,
-                cigarettesSmoked: 0,
-                cigarettesAvoided: { $gt: 0 },
-            }),
+            getSmokeFreeStreak(id, user.timezone, user.createdAt),
             BadgeTemplate.find({ type: "streak", isActive: true }).sort({ conditionValue: 1 }),
         ]);
 
@@ -641,13 +636,9 @@ exports.getUserProfile = async (req, res) => {
             user: {
                 ...user.toObject(),
                 currency: user.currency === "EUR" ? "€" : "$",
-                xp: progress.xp,
-                level: progress.level,
                 challengesCompleted: progress.challengesCompleted,
                 totalWins: progress.totalWins || 0,
                 totalLosses: progress.totalLosses || 0,
-                xpForNextLevel,
-                xpProgress,
                 overview: {
                     daily: {
                         cigarettesAvoided: overview.dailyCigarettesAvoided,
@@ -689,14 +680,11 @@ exports.getUserById = async (req, res) => {
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        // Fetch user progress (XP, level, challenges completed)
+        // Fetch user progress (challenges completed / win-loss record)
         let progress = await UserProgress.findOne({ userId: id });
         if (!progress) {
-            progress = { xp: 0, level: 1, challengesCompleted: 0, totalWins: 0, totalLosses: 0 };
+            progress = { challengesCompleted: 0, totalWins: 0, totalLosses: 0 };
         }
-
-        const xpForNextLevel = progress.level * 500;
-        const xpProgress = progress.xp % 500;
 
         // Fetch user overview
         const overview = await getUserOverview(id);
@@ -706,13 +694,9 @@ exports.getUserById = async (req, res) => {
             user: {
                 ...user.toObject(),
                 currency: user.currency === "EUR" ? "€" : "$",
-                xp: progress.xp,
-                level: progress.level,
                 challengesCompleted: progress.challengesCompleted,
                 totalWins: progress.totalWins || 0,
                 totalLosses: progress.totalLosses || 0,
-                xpForNextLevel,
-                xpProgress,
                 overview: {
                     daily: {
                         cigarettesAvoided: overview.dailyCigarettesAvoided,
@@ -920,7 +904,7 @@ exports.getAllUsers = async (req, res) => {
 
         const userIds = users.map((u) => u._id);
         const progressList = await UserProgress.find({ userId: { $in: userIds } })
-            .select("userId xp level challengesCompleted totalWins totalLosses");
+            .select("userId challengesCompleted totalWins totalLosses");
 
         const progressMap = {};
         progressList.forEach((p) => { progressMap[p.userId.toString()] = p; });
@@ -929,8 +913,6 @@ exports.getAllUsers = async (req, res) => {
             const progress = progressMap[u._id.toString()];
             return {
                 ...u.toObject(),
-                xp:                  progress?.xp                  ?? 0,
-                level:               progress?.level               ?? 1,
                 challengesCompleted: progress?.challengesCompleted ?? 0,
                 totalWins:           progress?.totalWins           ?? 0,
                 totalLosses:         progress?.totalLosses         ?? 0,

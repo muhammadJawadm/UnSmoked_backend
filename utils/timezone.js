@@ -15,8 +15,9 @@ const isValidTimezone = (tz) => {
     }
 };
 
-// Returns the Y/M/D of "now" as seen in the given IANA timezone (falls back to UTC).
-const getLocalDateParts = (timezone) => {
+// Returns the Y/M/D of the given instant (defaults to now) as seen in the
+// given IANA timezone (falls back to UTC).
+const getLocalDateParts = (timezone, instant = new Date()) => {
     const tz = isValidTimezone(timezone) ? timezone : "UTC";
 
     const parts = new Intl.DateTimeFormat("en-US", {
@@ -24,7 +25,7 @@ const getLocalDateParts = (timezone) => {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
-    }).formatToParts(new Date());
+    }).formatToParts(instant);
 
     const map = {};
     for (const { type, value } of parts) map[type] = value;
@@ -36,10 +37,11 @@ const getLocalDateParts = (timezone) => {
     };
 };
 
-// Returns today's local calendar date, encoded as a UTC-midnight Date so it
-// stays a plain "date-only" key comparable with existing stored `date` fields.
-const getLocalToday = (timezone) => {
-    const { year, month, day } = getLocalDateParts(timezone);
+// Returns the given instant's (defaults to now) local calendar date, encoded
+// as a UTC-midnight Date so it stays a plain "date-only" key comparable with
+// existing stored `date` fields.
+const getLocalToday = (timezone, instant = new Date()) => {
+    const { year, month, day } = getLocalDateParts(timezone, instant);
     return new Date(Date.UTC(year, month, day));
 };
 

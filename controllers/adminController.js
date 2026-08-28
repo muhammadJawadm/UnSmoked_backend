@@ -28,7 +28,7 @@ const Otp                     = require("../models/Otp");
 const UserOverview            = require("../models/UserOverview");
 const firebaseAdmin           = require("../utils/firebase");
 const mongoose                = require("mongoose");
-const { enrichChallengeCreatorXp, enrichChallengesCreatorXp } = require("../utils/challengeUtils");
+const { enrichChallengeCreatorStats, enrichChallengesCreatorStats } = require("../utils/challengeUtils");
 
 // ─── Pagination helper ────────────────────────────────────────────────────────
 
@@ -367,7 +367,7 @@ exports.getAllChallenges = async (req, res) => {
         res.status(200).json({
             success: true,
             message: "Challenges fetched successfully",
-            challenges: await enrichChallengesCreatorXp(challenges),
+            challenges: await enrichChallengesCreatorStats(challenges),
             pagination: paginationMeta(total, page, limit),
         });
     } catch (error) {
@@ -422,7 +422,7 @@ exports.getChallengeDetail = async (req, res) => {
                 .populate("assignedBy", "name email profile_picture")
                 .populate("assignedTo", "name email profile_picture")
                 .populate("taskId",     "title xps_points"),
-            enrichChallengeCreatorXp(challenge),
+            enrichChallengeCreatorStats(challenge),
         ]);
 
         res.status(200).json({

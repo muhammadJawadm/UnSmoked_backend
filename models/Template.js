@@ -20,7 +20,6 @@ const TemplateSchema = new mongoose.Schema(
         },
         durationDays: { type: Number, default: 1, min: 1 },
         boardSize: { type: Number, default: 50 },       // NEW: metadata (e.g. number of squares)
-        xpReward: { type: Number, default: 50, min: 0 },
         isActive: { type: Boolean, default: true },
         isCustom: { type: Boolean, default: false },
         createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

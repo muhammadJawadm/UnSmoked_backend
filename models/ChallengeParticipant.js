@@ -43,8 +43,9 @@ const challengeParticipantSchema = new mongoose.Schema(
             totalDaysFilled:        { type: Number, default: 0, min: 0 },
         },
 
-        // XP awarded after challenge ends (0 = not yet awarded)
-        xpEarned: { type: Number, default: 0, min: 0 },
+        // Guards against re-processing the same participant's result when a
+        // challenge-completion is re-entered (manual completeChallenge call or cron).
+        resultRecorded: { type: Boolean, default: false },
     },
     { timestamps: true }
 );

@@ -31,11 +31,11 @@ exports.getAllTemplates = async (req, res) => {
 // Create challenge template (admin only, or any user for custom templates)
 exports.createTemplate = async (req, res) => {
     try {
-        const { title, description, category, durationDays, xpReward, isActive, isCustom } = req.body;
+        const { title, description, category, durationDays, isActive, isCustom } = req.body;
         const createdBy = req.user.id;
 
         // Only enforce admin check if the template is NOT custom
-       
+
 
         // Validation
         if (!title || title.trim() === "") {
@@ -43,9 +43,6 @@ exports.createTemplate = async (req, res) => {
         }
         if (durationDays !== undefined && durationDays < 1) {
             return res.status(400).json({ success: false, message: "Duration must be at least 1 day" });
-        }
-        if (xpReward !== undefined && xpReward < 0) {
-            return res.status(400).json({ success: false, message: "XP reward cannot be negative" });
         }
 
         if (!category) {
@@ -73,7 +70,6 @@ exports.createTemplate = async (req, res) => {
             description,
             category,
             durationDays,
-            xpReward,
             isActive,
             isCustom,
             createdBy
@@ -94,7 +90,7 @@ exports.createTemplate = async (req, res) => {
 // Update challenge template (admin only)
 exports.updateTemplate = async (req, res) => {
     try {
-        const { title, description, category, durationDays, xpReward, isActive } = req.body;
+        const { title, description, category, durationDays, isActive } = req.body;
         const { id } = req.params;
         const userId = req.user.id;
         const userRole = req.user.role;
@@ -146,7 +142,6 @@ exports.updateTemplate = async (req, res) => {
         template.description = description ?? template.description;
         template.category = category ?? template.category;
         template.durationDays = durationDays ?? template.durationDays;
-        template.xpReward = xpReward ?? template.xpReward;
         template.isActive = isActive ?? template.isActive;
 
         await template.save();

@@ -8,9 +8,10 @@ const Challenge            = require("../models/Challenges");
 const ChallengeParticipant = require("../models/ChallengeParticipant");
 const DailyBoard           = require("../models/DailyBoard");
 const Competition          = require("../models/Competition");
-const { addXP }          = require("../utils/xpSystem");
+const { recordChallengeCompletion } = require("../utils/xpSystem");
 const { checkAndAssignBadge } = require("../services/badgeService");
 const sendNotificationToUsers = require("../utils/sendNotification");
+const { resolveChallengeOutcome } = require("../utils/challengeOutcome");
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -104,8 +105,9 @@ async function autoStartChallenges() {
 // ─── Challenge Auto-Complete ──────────────────────────────────────────────────
 
 /**
- * Finds all active challenges whose end date has passed, marks them completed,
- * determines the winner, awards XP / badges, and notifies participants.
+ * Finds all active challenges whose end date has passed, determines the
+ * winner (or voids the challenge if fewer than 2 participants engaged),
+ * records completion stats / badges, and notifies participants.
  */
 async function autoCompleteChallenges() {
     try {
@@ -118,50 +120,36 @@ async function autoCompleteChallenges() {
             .lean();
 
         for (const challenge of expiredChallenges) {
-            // Rank participants by cigarettes avoided (descending)
-            const participants = await ChallengeParticipant.find({
-                challengeId:  challenge._id,
-                inviteStatus: "accepted",
-            }).sort({ "challengeBoardStats.totalCigarettesAvoided": -1 });
+            const { isVoid, winnerId, allParticipants } = await resolveChallengeOutcome(challenge._id);
 
-            const winnerId = participants[0]?.userId ?? null;
+            if (isVoid) {
+                console.log(`[Cron] Voided challenge ${challenge._id} — fewer than 2 participants engaged`);
+                continue;
+            }
 
-            // Use findByIdAndUpdate to avoid re-validating stale legacy docs
-            await Challenge.findByIdAndUpdate(challenge._id, {
-                status: "completed",
-                winner: winnerId,
-            });
-
-            // Award XP and badges to each participant (skip already-awarded ones)
-            const baseXp = Number(challenge.xpReward) || 50; // fallback for legacy docs missing xpReward
-            for (const participant of participants) {
-                if (participant.xpEarned > 0) continue;
+            // Record completion stats and badges for each participant (skip already-recorded ones)
+            for (const participant of allParticipants) {
+                if (participant.resultRecorded) continue;
 
                 try {
                     const isWinner = winnerId?.toString() === participant.userId.toString();
-                    const xpAmount = isWinner ? baseXp : Math.floor(baseXp / 2);
 
-                    participant.xpEarned = xpAmount;
+                    participant.resultRecorded = true;
                     await participant.save();
 
-                    const updatedProgress = await addXP(participant.userId.toString(), xpAmount, isWinner);
+                    const updatedProgress = await recordChallengeCompletion(participant.userId.toString(), isWinner);
                     await checkAndAssignBadge(
                         participant.userId.toString(),
                         "completion",
                         updatedProgress.challengesCompleted
                     );
-                    await checkAndAssignBadge(
-                        participant.userId.toString(),
-                        "milestone",
-                        updatedProgress.level
-                    );
                 } catch (participantError) {
-                    console.error(`[Cron] Failed to award XP to participant ${participant.userId}:`, participantError.message);
+                    console.error(`[Cron] Failed to record result for participant ${participant.userId}:`, participantError.message);
                 }
             }
 
             // Notify all participants
-            const playerIds = participants.map((p) => p.userId.toString());
+            const playerIds = allParticipants.map((p) => p.userId.toString());
             await sendNotificationToUsers(
                 playerIds,
                 "Challenge Ended! 🏆",

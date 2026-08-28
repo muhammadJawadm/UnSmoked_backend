@@ -52,7 +52,7 @@ exports.getOverview = async (req, res) => {
             sentNotifications,
             failedNotifications,
             platformOverview,
-            topUsers,
+            topUsersByCompletions,
         ] = await Promise.all([
             User.countDocuments(),
             User.countDocuments({ is_active: true }),
@@ -84,7 +84,7 @@ exports.getOverview = async (req, res) => {
                     },
                 },
             ]),
-            UserProgress.find().sort({ xp: -1 }).limit(5).populate("userId", "name email profile_picture"),
+            UserProgress.find().sort({ challengesCompleted: -1 }).limit(5).populate("userId", "name email profile_picture"),
         ]);
 
         res.status(200).json({
@@ -136,11 +136,11 @@ exports.getOverview = async (req, res) => {
                         totalMoneySaved: parseFloat(platformOverview[0].totalMoneySaved.toFixed(2)),
                     }
                     : { totalCigarettesAvoided: 0, totalLifeRegainedMinutes: 0, totalMoneySaved: 0 },
-                topUsersByXp: topUsers.map((p) => ({
+                topUsersByCompletions: topUsersByCompletions.map((p) => ({
                     user:  p.userId,
-                    xp:    p.xp,
-                    level: p.level,
                     challengesCompleted: p.challengesCompleted,
+                    totalWins:   p.totalWins,
+                    totalLosses: p.totalLosses,
                 })),
             },
         });
@@ -336,13 +336,13 @@ exports.getChallengeAnalytics = async (req, res) => {
                 { $group: { _id: null, avg: { $avg: "$durationDays" } } },
             ]),
             ChallengeParticipant.aggregate([
-                { $match: { xpEarned: { $gt: 0 } } },
-                { $group: { _id: "$userId", totalXp: { $sum: "$xpEarned" }, wins: { $sum: 1 } } },
+                { $match: { resultRecorded: true } },
+                { $group: { _id: "$userId", wins: { $sum: 1 } } },
                 { $sort: { wins: -1 } },
                 { $limit: 10 },
                 { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "user" } },
                 { $unwind: "$user" },
-                { $project: { "user.name": 1, "user.email": 1, "user.profile_picture": 1, totalXp: 1, wins: 1 } },
+                { $project: { "user.name": 1, "user.email": 1, "user.profile_picture": 1, wins: 1 } },
             ]),
             ChallengeParticipant.aggregate([
                 { $group: { _id: "$inviteStatus", count: { $sum: 1 } } },

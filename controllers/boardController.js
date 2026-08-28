@@ -4,12 +4,12 @@ const MonthlyBoard = require("../models/MonthlyBoard");
 const UserOverview = require("../models/UserOverview");
 const User = require("../models/User");
 const Competition = require("../models/Competition");
-const UserProgress = require("../models/UserProgress");
 const Badges = require("../models/Badges");
 const ChallengeParticipant = require("../models/ChallengeParticipant");
 const Challenge = require("../models/Challenges");
-const { enrichChallengeCreatorXp } = require("../utils/challengeUtils");
+const { enrichChallengeCreatorStats } = require("../utils/challengeUtils");
 const { getLocalToday } = require("../utils/timezone");
+const { getSmokeFreeStreaksBatch } = require("../utils/streak");
 const isDuplicateKeyError = (error) => error && error.code === 11000;
 
 // Extends an existing challenge board's smokes array to match boardSize if it was
@@ -709,37 +709,25 @@ exports.getLeaderboard = async (req, res) => {
         const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
 
         // Fetch all active users
-        const users = await User.find({ is_active: true, role: "user" }).select("_id name profile_picture").lean();
+        const users = await User.find({ is_active: true, role: "user" })
+            .select("_id name profile_picture timezone createdAt")
+            .lean();
 
         const userIds = users.map((u) => u._id);
 
-        // Fetch overviews, progress, latest badge, and smoke-free day counts for all users in parallel
-        const [overviews, progresses, badges, smokeFreeCounts] = await Promise.all([
+        // Fetch overviews, latest badge, and current smoke-free streaks for all users in parallel
+        const [overviews, badges, streakMap] = await Promise.all([
             UserOverview.find({ userId: { $in: userIds } }).lean(),
-            UserProgress.find({ userId: { $in: userIds } }).lean(),
             Badges.find({ userId: { $in: userIds } })
                 .sort({ earnedAt: -1 })
                 .populate("badge", "title description imageUrl type")
                 .lean(),
-            DailyBoard.aggregate([
-                {
-                    $match: {
-                        userId: { $in: userIds },
-                        challengeId: null,
-                        cigarettesSmoked: 0,
-                        cigarettesAvoided: { $gt: 0 },
-                    },
-                },
-                { $group: { _id: "$userId", count: { $sum: 1 } } },
-            ]),
+            getSmokeFreeStreaksBatch(users),
         ]);
 
         // Index by userId string for O(1) lookup
         const overviewMap = {};
         overviews.forEach((o) => { overviewMap[o.userId.toString()] = o; });
-
-        const progressMap = {};
-        progresses.forEach((p) => { progressMap[p.userId.toString()] = p; });
 
         // Keep only the most recently earned badge per user
         const badgeMap = {};
@@ -748,24 +736,19 @@ exports.getLeaderboard = async (req, res) => {
             if (!badgeMap[key]) badgeMap[key] = b; // already sorted by earnedAt desc
         });
 
-        const smokeFreeMap = {};
-        smokeFreeCounts.forEach((s) => { smokeFreeMap[s._id.toString()] = s.count; });
-
         // Build leaderboard entries
         const leaderboard = users.map((user) => {
             const key = user._id.toString();
             const overview = overviewMap[key];
-            const progress = progressMap[key];
             const latestBadge = badgeMap[key];
 
             return {
                 userId: user._id,
                 name: user.name,
                 profilePicture: user.profile_picture || null,
-                smokeFreeDay: smokeFreeMap[key] || 0,
+                smokeFreeDay: streakMap.get(key) || 0,
                 cigarettesAvoided: overview ? overview.totalCigarettesAvoided : 0,
                 lifeRegained: overview ? overview.totalLifeRegained : 0,   // in minutes
-                level: progress ? progress.level : 1,
                 badge: latestBadge
                     ? {
                         title: latestBadge.badge.title,
@@ -944,7 +927,7 @@ exports.getChallengeBoard = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            challenge: await enrichChallengeCreatorXp(challenge),
+            challenge: await enrichChallengeCreatorStats(challenge),
             challengeBoard,
             participant,
             timeLeftMs,
@@ -1127,7 +1110,6 @@ exports.getChallengeBoardSummary = async (req, res) => {
             user: p.userId,
             challengeBoardStats: p.challengeBoardStats,
             isMe: p.userId._id.toString() === userId,
-            xpEarned: p.xpEarned,
         }));
 
         const timeLeftMs = challenge.endsAt
@@ -1136,7 +1118,7 @@ exports.getChallengeBoardSummary = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            challenge: await enrichChallengeCreatorXp(challenge),
+            challenge: await enrichChallengeCreatorStats(challenge),
             myBoards,
             myStats: myParticipant.challengeBoardStats,
             standings,

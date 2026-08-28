@@ -1,21 +1,19 @@
 const UserProgress = require("../models/UserProgress");
 
-// Attach creator XP fields to a single populated challenge object.
-const enrichChallengeCreatorXp = async (challenge) => {
+// Attach creator stats fields to a single populated challenge object.
+const enrichChallengeCreatorStats = async (challenge) => {
     if (!challenge) return challenge;
 
     const creatorId = challenge.createdBy?._id ?? challenge.createdBy;
     if (!creatorId) return challenge.toObject ? challenge.toObject() : challenge;
 
     const progress = await UserProgress.findOne({ userId: creatorId })
-        .select("xp level challengesCompleted totalWins totalLosses");
+        .select("challengesCompleted totalWins totalLosses");
 
     const obj = challenge.toObject ? challenge.toObject() : { ...challenge };
     if (obj.createdBy && typeof obj.createdBy === "object") {
         obj.createdBy = {
             ...obj.createdBy,
-            xp:                  progress?.xp                  ?? 0,
-            level:               progress?.level               ?? 1,
             challengesCompleted: progress?.challengesCompleted ?? 0,
             totalWins:           progress?.totalWins           ?? 0,
             totalLosses:         progress?.totalLosses         ?? 0,
@@ -24,8 +22,8 @@ const enrichChallengeCreatorXp = async (challenge) => {
     return obj;
 };
 
-// Batch-attach creator XP to an array of populated challenge objects.
-const enrichChallengesCreatorXp = async (challenges) => {
+// Batch-attach creator stats to an array of populated challenge objects.
+const enrichChallengesCreatorStats = async (challenges) => {
     if (!challenges || challenges.length === 0) return challenges;
 
     const creatorIds = [
@@ -40,7 +38,7 @@ const enrichChallengesCreatorXp = async (challenges) => {
     ];
 
     const progressList = await UserProgress.find({ userId: { $in: creatorIds } })
-        .select("userId xp level challengesCompleted totalWins totalLosses");
+        .select("userId challengesCompleted totalWins totalLosses");
 
     const progressMap = {};
     progressList.forEach((p) => { progressMap[p.userId.toString()] = p; });
@@ -53,8 +51,6 @@ const enrichChallengesCreatorXp = async (challenges) => {
         if (obj.createdBy && typeof obj.createdBy === "object" && progress) {
             obj.createdBy = {
                 ...obj.createdBy,
-                xp:                  progress.xp                  ?? 0,
-                level:               progress.level               ?? 1,
                 challengesCompleted: progress.challengesCompleted ?? 0,
                 totalWins:           progress.totalWins           ?? 0,
                 totalLosses:         progress.totalLosses         ?? 0,
@@ -64,4 +60,4 @@ const enrichChallengesCreatorXp = async (challenges) => {
     });
 };
 
-module.exports = { enrichChallengeCreatorXp, enrichChallengesCreatorXp };
+module.exports = { enrichChallengeCreatorStats, enrichChallengesCreatorStats };

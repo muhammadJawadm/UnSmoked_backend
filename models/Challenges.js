@@ -24,7 +24,6 @@ const challengeSchema = new mongoose.Schema(
         // Challenge content — always stored inline for fast reads
         durationDays: { type: Number, default: 1, min: 1 },
         boardSize: { type: Number, default: 50 },
-        xpReward: { type: Number, default: 50, min: 0 },
 
         // Mode
         mode: {
