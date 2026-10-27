@@ -34,6 +34,7 @@ const badgeRoutes         = require("./routes/badgeRoutes");
 const postHideRoutes      = require("./routes/postHideRoutes");
 const postReportRoutes    = require("./routes/postReportRoutes");
 const adminRoutes         = require("./routes/adminRoutes");
+const termsRoutes         = require("./routes/termsRoutes");
 
 // ─── App Initialisation ───────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ app.use("/badges",                badgeRoutes);
 app.use("/post-hides",            postHideRoutes);
 app.use("/post-reports",          postReportRoutes);
 app.use("/admin",                 adminRoutes);
+app.use("/terms",                 termsRoutes);
 
 // ─── Database Connection ──────────────────────────────────────────────────────
 
