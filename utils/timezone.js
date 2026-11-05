@@ -45,4 +45,22 @@ const getLocalToday = (timezone, instant = new Date()) => {
     return new Date(Date.UTC(year, month, day));
 };
 
-module.exports = { isValidTimezone, getLocalDateParts, getLocalToday };
+// Returns the hour (0-23) and minute (0-59) of the given instant (defaults to
+// now) as seen in the given IANA timezone (falls back to UTC).
+const getLocalHourMinute = (timezone, instant = new Date()) => {
+    const tz = isValidTimezone(timezone) ? timezone : "UTC";
+
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: tz,
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+    }).formatToParts(instant);
+
+    const map = {};
+    for (const { type, value } of parts) map[type] = value;
+
+    return { hour: Number(map.hour), minute: Number(map.minute) };
+};
+
+module.exports = { isValidTimezone, getLocalDateParts, getLocalToday, getLocalHourMinute };

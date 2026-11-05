@@ -32,8 +32,9 @@ const sendNotificationToUsers = async (userIds, title, body, data = {}) => {
         }))
     );
 
-    // Determine if this is a challenge alert based on the data.type
+    // Determine the notification category based on data.type
     const isChallengeAlert = data && typeof data.type === 'string' && data.type.startsWith('challenge_');
+    const isBoardReminder = data && data.type === 'board_reminder';
 
     // Collect FCM tokens only for users who have pushes enabled for this type
     const fcmTokens = [];
@@ -46,7 +47,12 @@ const sendNotificationToUsers = async (userIds, title, body, data = {}) => {
                 return; // Skip push
             }
         }
-        
+        if (isBoardReminder) {
+            if (user.notification_preferences && user.notification_preferences.daily_motivation === false) {
+                return; // Skip push
+            }
+        }
+
         fcmTokens.push(user.fcm_token);
     });
 

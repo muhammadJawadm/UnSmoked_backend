@@ -8,14 +8,20 @@ const Challenge            = require("../models/Challenges");
 const ChallengeParticipant = require("../models/ChallengeParticipant");
 const DailyBoard           = require("../models/DailyBoard");
 const Competition          = require("../models/Competition");
+const User                 = require("../models/User");
 const { recordChallengeCompletion } = require("../utils/xpSystem");
 const { checkAndAssignBadge } = require("../services/badgeService");
 const sendNotificationToUsers = require("../utils/sendNotification");
 const { resolveChallengeOutcome } = require("../utils/challengeOutcome");
+const { getLocalToday, getLocalHourMinute } = require("../utils/timezone");
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const FIVE_MINUTES = 5 * 60 * 1000;
+
+// Hours (24h, each user's own local time) at which the board reminder fires.
+const BOARD_REMINDER_HOURS = [10, 17]; // 10 AM and 5 PM
+const BOARD_REMINDER_MESSAGE = "Don't forget to fill your Today's board to keep your progress going";
 
 // ─── Helpers (mirrors challengesController — kept here to avoid circular deps) ─
 
@@ -221,6 +227,74 @@ async function autoManageCompetitions() {
     }
 }
 
+// ─── Daily Board Reminder (10 AM & 5 PM, per user's own local time) ───────────
+
+/**
+ * Twice a day (10 AM and 5 PM, in each user's own timezone — not server time),
+ * reminds any user who hasn't started today's personal board yet, or started
+ * it but hasn't filled every slot, to go do so.
+ */
+async function sendBoardReminders() {
+    try {
+        // Only users who've completed their profile (cigarettes_per_day set)
+        // actually have a board to fill.
+        const users = await User.find({
+            is_active: true,
+            role: "user",
+            cigarettes_per_day: { $gt: 0 },
+        }).select("_id timezone");
+
+        if (!users.length) return;
+
+        // Keep only users whose local clock is currently inside a reminder
+        // window. This runs every 5 minutes, so a 5-minute-wide window
+        // catches each user's 10 AM / 5 PM exactly once.
+        const due = users.filter((user) => {
+            const { hour, minute } = getLocalHourMinute(user.timezone);
+            return BOARD_REMINDER_HOURS.includes(hour) && minute < 5;
+        });
+
+        if (!due.length) return;
+
+        // Each user's "today" depends on their own timezone.
+        const todayByUser = new Map();
+        due.forEach((u) => todayByUser.set(u._id.toString(), getLocalToday(u.timezone)));
+
+        const distinctDates = [...new Set([...todayByUser.values()].map((d) => d.getTime()))]
+            .map((t) => new Date(t));
+
+        const boards = await DailyBoard.find({
+            userId: { $in: due.map((u) => u._id) },
+            challengeId: null,
+            date: { $in: distinctDates },
+        }).select("userId date smokes");
+
+        const boardMap = new Map();
+        boards.forEach((b) => boardMap.set(`${b.userId.toString()}_${b.date.getTime()}`, b));
+
+        const needsReminder = due.filter((user) => {
+            const key = user._id.toString();
+            const today = todayByUser.get(key);
+            const board = boardMap.get(`${key}_${today.getTime()}`);
+            if (!board) return true; // hasn't started today's board at all
+            return board.smokes.some((slot) => slot === null); // started but not finished
+        });
+
+        if (!needsReminder.length) return;
+
+        await sendNotificationToUsers(
+            needsReminder.map((u) => u._id.toString()),
+            "Keep Going!",
+            BOARD_REMINDER_MESSAGE,
+            { type: "board_reminder" }
+        );
+
+        console.log(`[Cron] Sent board reminders to ${needsReminder.length} user(s)`);
+    } catch (error) {
+        console.error("[Cron] Board reminder error:", error);
+    }
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -231,6 +305,7 @@ function startCronJobs() {
     setInterval(autoStartChallenges,     FIVE_MINUTES);
     setInterval(autoCompleteChallenges,  FIVE_MINUTES);
     setInterval(autoManageCompetitions,  FIVE_MINUTES);
+    setInterval(sendBoardReminders,      FIVE_MINUTES);
     console.log("[Cron] All scheduled jobs started (interval: 5 min)");
 }
 
