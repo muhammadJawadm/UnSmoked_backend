@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Board = require("../models/Board");
 const DailyBoard = require("../models/DailyBoard");
 const MonthlyBoard = require("../models/MonthlyBoard");
@@ -66,17 +67,54 @@ const recalculateDailyStats = (dailyBoard, costPerCigarette) => {
 };
 
 /**
- * Helper: recalculate monthly board totals from all its daily boards
+ * Helper: recalculate monthly board totals from all its daily boards.
+ * Sums in the database via $group instead of pulling every DailyBoard doc
+ * over the wire just to add 4 numbers together in JS.
  */
 const recalculateMonthlyStats = async (monthlyBoard) => {
-    const dailyBoards = await DailyBoard.find({
-        _id: { $in: monthlyBoard.dailyBoards },
-    });
+    const [totals] = await DailyBoard.aggregate([
+        { $match: { _id: { $in: monthlyBoard.dailyBoards } } },
+        {
+            $group: {
+                _id: null,
+                totalCigarettesAvoided: { $sum: "$cigarettesAvoided" },
+                totalCigarettesSmoked: { $sum: "$cigarettesSmoked" },
+                totalLifeRegained: { $sum: "$lifeRegained" },
+                totalMoneySaved: { $sum: "$moneySaved" },
+            },
+        },
+    ]);
 
-    monthlyBoard.totalCigarettesAvoided = dailyBoards.reduce((sum, db) => sum + db.cigarettesAvoided, 0);
-    monthlyBoard.totalCigarettesSmoked = dailyBoards.reduce((sum, db) => sum + db.cigarettesSmoked, 0);
-    monthlyBoard.totalLifeRegained = dailyBoards.reduce((sum, db) => sum + db.lifeRegained, 0);
-    monthlyBoard.totalMoneySaved = parseFloat(dailyBoards.reduce((sum, db) => sum + db.moneySaved, 0).toFixed(2));
+    monthlyBoard.totalCigarettesAvoided = totals?.totalCigarettesAvoided || 0;
+    monthlyBoard.totalCigarettesSmoked = totals?.totalCigarettesSmoked || 0;
+    monthlyBoard.totalLifeRegained = totals?.totalLifeRegained || 0;
+    monthlyBoard.totalMoneySaved = parseFloat((totals?.totalMoneySaved || 0).toFixed(2));
+};
+
+/**
+ * Helper: sum lifetime totals across all of a user's monthly boards via $group,
+ * instead of fetching every MonthlyBoard doc and reducing in JS.
+ */
+const computeLifetimeStats = async (userId) => {
+    const [totals] = await MonthlyBoard.aggregate([
+        { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+        {
+            $group: {
+                _id: null,
+                totalCigarettesAvoided: { $sum: "$totalCigarettesAvoided" },
+                totalCigarettesSmoked: { $sum: "$totalCigarettesSmoked" },
+                totalLifeRegained: { $sum: "$totalLifeRegained" },
+                totalMoneySaved: { $sum: "$totalMoneySaved" },
+            },
+        },
+    ]);
+
+    return {
+        totalCigarettesAvoided: totals?.totalCigarettesAvoided || 0,
+        totalCigarettesSmoked: totals?.totalCigarettesSmoked || 0,
+        totalLifeRegained: totals?.totalLifeRegained || 0,
+        totalMoneySaved: parseFloat((totals?.totalMoneySaved || 0).toFixed(2)),
+    };
 };
 
 /**
@@ -101,11 +139,12 @@ const updateOverview = async (userId, dailyBoard, monthlyBoard) => {
     overview.monthlyMonth = monthlyBoard.month;
     overview.monthlyYear = monthlyBoard.year;
 
-    // Lifetime totals (sum all monthly boards)
-    const allMonthlyBoards = await MonthlyBoard.find({ userId });
-    overview.totalCigarettesAvoided = allMonthlyBoards.reduce((sum, mb) => sum + mb.totalCigarettesAvoided, 0);
-    overview.totalLifeRegained = allMonthlyBoards.reduce((sum, mb) => sum + mb.totalLifeRegained, 0);
-    overview.totalMoneySaved = parseFloat(allMonthlyBoards.reduce((sum, mb) => sum + mb.totalMoneySaved, 0).toFixed(2));
+    // Lifetime totals (summed in the database, not pulled doc-by-doc)
+    const lifetime = await computeLifetimeStats(userId);
+    overview.totalCigarettesAvoided = lifetime.totalCigarettesAvoided;
+    overview.totalCigarettesSmoked = lifetime.totalCigarettesSmoked;
+    overview.totalLifeRegained = lifetime.totalLifeRegained;
+    overview.totalMoneySaved = lifetime.totalMoneySaved;
 
     // Health indicators based on total avoided
     if (overview.totalCigarettesAvoided >= 500) {
@@ -202,14 +241,7 @@ exports.getTodayBoard = async (req, res) => {
         const userId = req.user.id;
         const { dailyBoard, user } = await ensureTodayBoard(userId);
 
-        const allMonthlyBoards = await MonthlyBoard.find({ userId });
-
-        const lifetimeStats = {
-            totalCigarettesAvoided: allMonthlyBoards.reduce((sum, mb) => sum + mb.totalCigarettesAvoided, 0),
-            totalCigarettesSmoked:  allMonthlyBoards.reduce((sum, mb) => sum + mb.totalCigarettesSmoked,  0),
-            totalLifeRegained:      allMonthlyBoards.reduce((sum, mb) => sum + mb.totalLifeRegained,      0),
-            totalMoneySaved:        parseFloat(allMonthlyBoards.reduce((sum, mb) => sum + mb.totalMoneySaved, 0).toFixed(2)),
-        };
+        const lifetimeStats = await computeLifetimeStats(userId);
 
         // ── Check if user has an active challenge ────
         const myParticipations = await ChallengeParticipant.find({
@@ -372,6 +404,7 @@ exports.markSlot = async (req, res) => {
         }
 
         // ── Step 3: Mirror to personal board (only if index fits its size) ────────
+        let overview = null;
         if (index < personalBoard.smokes.length) {
             personalBoard.smokes[index] = status;
             personalBoard.markModified("smokes");
@@ -387,17 +420,20 @@ exports.markSlot = async (req, res) => {
             if (monthlyBoard) {
                 await recalculateMonthlyStats(monthlyBoard);
                 await monthlyBoard.save();
-                await updateOverview(userId, personalBoard, monthlyBoard);
+                overview = await updateOverview(userId, personalBoard, monthlyBoard);
             }
         }
 
-        const allMonthlyBoards = await MonthlyBoard.find({ userId });
-        const lifetimeStats = {
-            totalCigarettesAvoided: allMonthlyBoards.reduce((sum, mb) => sum + mb.totalCigarettesAvoided, 0),
-            totalCigarettesSmoked:  allMonthlyBoards.reduce((sum, mb) => sum + mb.totalCigarettesSmoked,  0),
-            totalLifeRegained:      allMonthlyBoards.reduce((sum, mb) => sum + mb.totalLifeRegained,      0),
-            totalMoneySaved:        parseFloat(allMonthlyBoards.reduce((sum, mb) => sum + mb.totalMoneySaved, 0).toFixed(2)),
-        };
+        // updateOverview just recomputed these lifetime totals — reuse them
+        // instead of re-querying MonthlyBoard for the same numbers again.
+        const lifetimeStats = overview
+            ? {
+                totalCigarettesAvoided: overview.totalCigarettesAvoided,
+                totalCigarettesSmoked: overview.totalCigarettesSmoked,
+                totalLifeRegained: overview.totalLifeRegained,
+                totalMoneySaved: overview.totalMoneySaved,
+            }
+            : await computeLifetimeStats(userId);
 
         res.status(200).json({
             success: true,

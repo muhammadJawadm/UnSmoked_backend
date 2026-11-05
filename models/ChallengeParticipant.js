@@ -53,4 +53,10 @@ const challengeParticipantSchema = new mongoose.Schema(
 // One participant record per user per challenge
 challengeParticipantSchema.index({ challengeId: 1, userId: 1 }, { unique: true });
 
+// Serves the many "which challenges is this user in" lookups that filter by
+// userId + inviteStatus without challengeId (markSlot, getTodayBoard, etc.) —
+// without this, those queries can't use the compound index above and fall
+// back to a full collection scan.
+challengeParticipantSchema.index({ userId: 1, inviteStatus: 1 });
+
 module.exports = mongoose.model("ChallengeParticipant", challengeParticipantSchema);

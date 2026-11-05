@@ -19,6 +19,7 @@ const userOverviewSchema = new mongoose.Schema(
 
         // Lifetime totals
         totalCigarettesAvoided: { type: Number, default: 0, min: 0 },
+        totalCigarettesSmoked: { type: Number, default: 0, min: 0 },
         totalLifeRegained: { type: Number, default: 0, min: 0 },
         totalMoneySaved: { type: Number, default: 0, min: 0 },
 

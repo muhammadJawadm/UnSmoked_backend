@@ -5,6 +5,7 @@ const express    = require("express");
 const cors       = require("cors");
 const mongoose   = require("mongoose");
 const DailyBoard = require("./models/DailyBoard");
+const ChallengeParticipant = require("./models/ChallengeParticipant");
 const { startCronJobs } = require("./crons/index");
 
 // ─── Route Imports ────────────────────────────────────────────────────────────
@@ -88,6 +89,10 @@ async function connectDatabase() {
     // Keep DailyBoard indexes aligned with the schema to avoid stale unique-index conflicts.
     await DailyBoard.syncIndexes();
     console.log("[DB] DailyBoard indexes synced");
+
+    // Creates the new { userId, inviteStatus } index on existing deployments.
+    await ChallengeParticipant.syncIndexes();
+    console.log("[DB] ChallengeParticipant indexes synced");
 }
 
 // ─── Server Bootstrap ─────────────────────────────────────────────────────────
