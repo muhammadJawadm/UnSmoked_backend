@@ -8,3 +8,5 @@ firebase-adminsdk*.json
 logs/
 *.log
 *.pem
+
+scripts

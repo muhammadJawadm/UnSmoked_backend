@@ -26,7 +26,7 @@ const syncChallengeBoardSize = async (board, boardSize) => {
 };
 
 // ─── Constants ───
-const LIFE_REGAINED_PER_CIGARETTE = 11; // minutes of life regained per cigarette avoided
+const LIFE_REGAINED_PER_CIGARETTE = 20; // minutes of life regained per cigarette avoided (UCL, 2024)
 
 /**
  * Helper: calculate cost per cigarette from user's profile
