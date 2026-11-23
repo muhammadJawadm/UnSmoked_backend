@@ -1,6 +1,7 @@
 const Message = require("../models/Message");
 const Chat = require("../models/Chat");
 const { OpenAI } = require("openai");
+const AiQuota = require("../models/AiQuota");
 
 
 // Get all messages for a specific chat
@@ -509,17 +510,35 @@ The Panic Button doesn't exist because you're weak. It exists because quitting s
         ];
 
         let aiResponse;
+        let actualCostEur = 0;
         try {
             const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
             const completion = await openai.chat.completions.create({
-                model: "gpt-4o", // ✅ Required for vision support
+                model: "gpt-4o",
                 messages: openaiMessages,
                 temperature: 0.7,
                 max_tokens: 500
             });
             aiResponse = completion.choices[0].message.content;
+
+            // Calculate actual cost from token usage (gpt-4o pricing: $2.50/1M input, $10/1M output)
+            const usage = completion.usage;
+            if (usage) {
+                const inputCostUsd = (usage.prompt_tokens / 1_000_000) * 2.50;
+                const outputCostUsd = (usage.completion_tokens / 1_000_000) * 10.00;
+                const totalUsd = inputCostUsd + outputCostUsd;
+                actualCostEur = totalUsd * 0.92; // approximate USD → EUR
+            }
         } catch (openaiError) {
             aiResponse = `[DUMMY RESPONSE] I received your message: "${hasText ? trimmedUserMessage : "[Media attachment]"}". This is a placeholder reply used for testing - the AI service is currently unavailable (${openaiError.message}).`;
+        }
+
+        // Deduct actual AI cost from the user's quota
+        if (req.aiQuota && actualCostEur > 0) {
+            await AiQuota.updateOne(
+                { _id: req.aiQuota._id },
+                { $inc: { usedEur: parseFloat(actualCostEur.toFixed(6)) } }
+            );
         }
 
         const aiMsg = new Message({

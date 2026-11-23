@@ -37,6 +37,7 @@ const postReportRoutes    = require("./routes/postReportRoutes");
 const adminRoutes         = require("./routes/adminRoutes");
 const termsRoutes         = require("./routes/termsRoutes");
 const privacyPolicyRoutes = require("./routes/privacyPolicyRoutes");
+const aiQuotaRoutes       = require("./routes/aiQuotaRoutes");
 
 // ─── App Initialisation ───────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ app.use("/post-reports",          postReportRoutes);
 app.use("/admin",                 adminRoutes);
 app.use("/terms",                 termsRoutes);
 app.use("/privacy-policy",        privacyPolicyRoutes);
+app.use("/ai-quota",              aiQuotaRoutes);
 
 // ─── Database Connection ──────────────────────────────────────────────────────
 

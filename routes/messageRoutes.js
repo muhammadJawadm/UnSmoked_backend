@@ -1,10 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const verifyToken = require("../middleware/verifyToken");
+const checkAiQuota = require("../middleware/checkAiQuota");
 const { getMessagesByChatId, deleteMessage, sendToOpenAI } = require("../controllers/messageController");
 
 // Send a user message and receive the AI reply (uses the caller's persistent chat)
-router.post("/send", verifyToken, sendToOpenAI);
+router.post("/send", verifyToken, checkAiQuota, sendToOpenAI);
 
 // Get all messages for a chat by its ID
 router.get("/chat/:chatId", verifyToken, getMessagesByChatId);
