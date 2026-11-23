@@ -159,7 +159,7 @@ exports.getQuotaStatus = async (req, res) => {
                 cycleStartDate: quota.cycleStartDate,
                 cycleEndDate: quota.cycleEndDate,
                 isCycleActive: now <= quota.cycleEndDate,
-                canReload: remaining < 0.03 // hint to mobile: show reload button
+                canReload: remaining < 0.001
             }
         });
     } catch (error) {

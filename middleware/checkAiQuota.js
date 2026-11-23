@@ -1,6 +1,6 @@
 const AiQuota = require("../models/AiQuota");
 
-const COST_PER_MESSAGE_EUR = 0.03; // estimated average cost per AI message
+const MIN_REMAINING_EUR = 0.001; // allow sending as long as any balance remains
 
 /**
  * Middleware that checks whether the user has enough AI quota left
@@ -34,7 +34,7 @@ const checkAiQuota = async (req, res, next) => {
 
         const remaining = quota.allowanceEur - quota.usedEur;
 
-        if (remaining < COST_PER_MESSAGE_EUR) {
+        if (remaining < MIN_REMAINING_EUR) {
             return res.status(403).json({
                 success: false,
                 code: "QUOTA_EXCEEDED",

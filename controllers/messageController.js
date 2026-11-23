@@ -565,7 +565,7 @@ The Panic Button doesn't exist because you're weak. It exists because quitting s
                 remainingEur: parseFloat(remaining.toFixed(4)),
                 reloadCount: updated.reloadCount,
                 cycleEndDate: updated.cycleEndDate,
-                canReload: remaining < 0.03
+                canReload: remaining < 0.001
             };
         }
 
