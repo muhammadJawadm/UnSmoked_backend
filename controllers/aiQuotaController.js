@@ -1,8 +1,8 @@
 const AiQuota = require("../models/AiQuota");
 const { checkActiveSubscription, verifyReloadPurchase, getSubscriberInfo } = require("../services/revenueCatService");
 
-const BASE_ALLOWANCE_EUR = 0.03;
-const RELOAD_AMOUNT_EUR = 0.03;
+const BASE_ALLOWANCE_EUR = 1.50;
+const RELOAD_AMOUNT_EUR = 1.50;
 const RELOAD_PRODUCT_ID = "ai_coach_reload";
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -193,8 +193,7 @@ exports.revenueCatWebhook = async (req, res) => {
 
         const { type, app_user_id, expiration_at_ms, purchase_date_ms, product_id, store_transaction_id, entitlement_ids } = event;
 
-        console.log("[RevenueCat Webhook] Event received:", JSON.stringify({ type, app_user_id, product_id, store_transaction_id, entitlement_ids }));
-
+       
         if (!app_user_id) {
             return res.status(200).json({ success: true, message: "No app_user_id, skipping" });
         }
