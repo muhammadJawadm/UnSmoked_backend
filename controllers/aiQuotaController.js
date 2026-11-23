@@ -1,8 +1,8 @@
 const AiQuota = require("../models/AiQuota");
 const { checkActiveSubscription, verifyReloadPurchase, getSubscriberInfo } = require("../services/revenueCatService");
 
-const BASE_ALLOWANCE_EUR = 0.50;
-const RELOAD_AMOUNT_EUR = 0.50;
+const BASE_ALLOWANCE_EUR = 0.10;
+const RELOAD_AMOUNT_EUR = 0.10;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /ai-quota/initialize
