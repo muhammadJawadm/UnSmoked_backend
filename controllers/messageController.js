@@ -555,10 +555,25 @@ The Panic Button doesn't exist because you're weak. It exists because quitting s
         chat.updatedAt = new Date();
         await chat.save();
 
+        let quotaInfo = null;
+        if (req.aiQuota) {
+            const updated = await AiQuota.findById(req.aiQuota._id).lean();
+            const remaining = Math.max(0, updated.allowanceEur - updated.usedEur);
+            quotaInfo = {
+                allowanceEur: updated.allowanceEur,
+                usedEur: parseFloat(updated.usedEur.toFixed(4)),
+                remainingEur: parseFloat(remaining.toFixed(4)),
+                reloadCount: updated.reloadCount,
+                cycleEndDate: updated.cycleEndDate,
+                canReload: remaining < 0.03
+            };
+        }
+
         res.status(200).json({
             success: true,
             userMessage: userMsg,
-            aiMessage: aiMsg
+            aiMessage: aiMsg,
+            quota: quotaInfo
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

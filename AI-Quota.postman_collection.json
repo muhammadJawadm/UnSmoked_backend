@@ -1,0 +1,327 @@
+{
+	"info": {
+		"name": "UnSmoked - AI Quota",
+		"description": "AI Coach quota management endpoints for the UnSmoke'm app.\n\nSet the `base_url` and `token` variables before testing.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://16.170.234.49.nip.io",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string",
+			"description": "JWT token from /auth/login"
+		},
+		{
+			"key": "revenueCatUserId",
+			"value": "",
+			"type": "string",
+			"description": "The user's MongoDB _id used as RevenueCat app_user_id"
+		},
+		{
+			"key": "transactionId",
+			"value": "",
+			"type": "string",
+			"description": "Store transaction ID from reload purchase receipt"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "1. Check Quota Status (Before Subscribe)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/ai-quota/status",
+					"host": ["{{base_url}}"],
+					"path": ["ai-quota", "status"]
+				},
+				"description": "Check the user's AI quota status.\n\n**Expected before subscription:** `hasQuota: false`\n\n**Expected after subscription:** full quota object with `allowanceEur`, `usedEur`, `remainingEur`, etc."
+			},
+			"response": [
+				{
+					"name": "No Quota (Not Subscribed)",
+					"status": "OK",
+					"code": 200,
+					"body": "{\n  \"success\": true,\n  \"hasQuota\": false,\n  \"message\": \"No AI quota. User needs an active premium subscription.\"\n}"
+				},
+				{
+					"name": "Has Active Quota",
+					"status": "OK",
+					"code": 200,
+					"body": "{\n  \"success\": true,\n  \"hasQuota\": true,\n  \"quota\": {\n    \"allowanceEur\": 1.5,\n    \"usedEur\": 0.0312,\n    \"remainingEur\": 1.4688,\n    \"reloadCount\": 0,\n    \"cycleStartDate\": \"2026-11-23T00:00:00.000Z\",\n    \"cycleEndDate\": \"2026-12-23T00:00:00.000Z\",\n    \"isCycleActive\": true,\n    \"canReload\": false\n  }\n}"
+				}
+			]
+		},
+		{
+			"name": "2. Send AI Message (Before Subscribe - Should Fail)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"userMessage\": \"Hello coach, I need help quitting smoking\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/messages/send",
+					"host": ["{{base_url}}"],
+					"path": ["messages", "send"]
+				},
+				"description": "Try sending an AI message without an active quota.\n\n**Expected:** `403` with code `NO_AI_QUOTA`"
+			},
+			"response": [
+				{
+					"name": "Blocked - No Quota",
+					"status": "Forbidden",
+					"code": 403,
+					"body": "{\n  \"success\": false,\n  \"code\": \"NO_AI_QUOTA\",\n  \"message\": \"No AI quota found. Please subscribe to Premium to use the AI Coach.\"\n}"
+				}
+			]
+		},
+		{
+			"name": "3. Initialize Quota (After Premium Purchase)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"revenueCatUserId\": \"{{revenueCatUserId}}\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/ai-quota/initialize",
+					"host": ["{{base_url}}"],
+					"path": ["ai-quota", "initialize"]
+				},
+				"description": "Call this AFTER the mobile app confirms a premium subscription purchase via RevenueCat.\n\nSet the `revenueCatUserId` variable to the user's MongoDB `_id`.\n\n**Expected:** `200` with quota initialized at €1.50 allowance."
+			},
+			"response": [
+				{
+					"name": "Quota Initialized",
+					"status": "OK",
+					"code": 200,
+					"body": "{\n  \"success\": true,\n  \"message\": \"AI quota initialized successfully.\",\n  \"quota\": {\n    \"allowanceEur\": 1.5,\n    \"usedEur\": 0,\n    \"remainingEur\": 1.5,\n    \"reloadCount\": 0,\n    \"cycleStartDate\": \"2026-11-23T00:00:00.000Z\",\n    \"cycleEndDate\": \"2026-12-23T00:00:00.000Z\"\n  }\n}"
+				},
+				{
+					"name": "No Active Subscription",
+					"status": "Forbidden",
+					"code": 403,
+					"body": "{\n  \"success\": false,\n  \"code\": \"NO_ACTIVE_SUBSCRIPTION\",\n  \"message\": \"No active premium subscription found in RevenueCat.\"\n}"
+				}
+			]
+		},
+		{
+			"name": "4. Check Quota Status (After Initialize)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/ai-quota/status",
+					"host": ["{{base_url}}"],
+					"path": ["ai-quota", "status"]
+				},
+				"description": "Verify quota was created successfully.\n\n**Expected:** `hasQuota: true`, `allowanceEur: 1.5`, `usedEur: 0`"
+			},
+			"response": []
+		},
+		{
+			"name": "5. Send AI Message (With Quota - Should Work)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"userMessage\": \"I'm struggling with cravings today, any tips?\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/messages/send",
+					"host": ["{{base_url}}"],
+					"path": ["messages", "send"]
+				},
+				"description": "Send an AI message with active quota.\n\n**Expected:** `200` with AI response. Quota `usedEur` increases based on actual OpenAI token cost."
+			},
+			"response": [
+				{
+					"name": "AI Response Success",
+					"status": "OK",
+					"code": 200,
+					"body": "{\n  \"success\": true,\n  \"userMessage\": { \"_id\": \"...\", \"role\": \"user\", \"message\": \"I'm struggling with cravings today, any tips?\" },\n  \"aiMessage\": { \"_id\": \"...\", \"role\": \"assistant\", \"message\": \"Cravings are completely normal...\" }\n}"
+				}
+			]
+		},
+		{
+			"name": "6. Check Quota Status (After Messages)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/ai-quota/status",
+					"host": ["{{base_url}}"],
+					"path": ["ai-quota", "status"]
+				},
+				"description": "Check that `usedEur` increased after sending messages.\n\n**Expected:** `usedEur` > 0, `remainingEur` < 1.50"
+			},
+			"response": []
+		},
+		{
+			"name": "7. Send AI Message (Quota Exceeded - Should Fail)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"userMessage\": \"This should be blocked\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/messages/send",
+					"host": ["{{base_url}}"],
+					"path": ["messages", "send"]
+				},
+				"description": "Try sending when quota is fully used up.\n\n**Expected:** `403` with code `QUOTA_EXCEEDED` and remaining quota info."
+			},
+			"response": [
+				{
+					"name": "Blocked - Quota Exceeded",
+					"status": "Forbidden",
+					"code": 403,
+					"body": "{\n  \"success\": false,\n  \"code\": \"QUOTA_EXCEEDED\",\n  \"message\": \"You have reached your AI usage limit for this billing cycle. Purchase a reload or wait for your next cycle.\",\n  \"quota\": {\n    \"allowanceEur\": 1.5,\n    \"usedEur\": 1.5,\n    \"remainingEur\": 0,\n    \"reloadCount\": 0,\n    \"cycleEndDate\": \"2026-12-23T00:00:00.000Z\"\n  }\n}"
+				}
+			]
+		},
+		{
+			"name": "8. Purchase Reload (+€1.50)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"transactionId\": \"{{transactionId}}\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/ai-quota/reload",
+					"host": ["{{base_url}}"],
+					"path": ["ai-quota", "reload"]
+				},
+				"description": "Call this AFTER the mobile app confirms a reload pack purchase (€3.99) via RevenueCat.\n\nSet the `transactionId` variable to the store transaction ID from the purchase receipt.\n\n**Expected:** `200`, allowance increases by €1.50."
+			},
+			"response": [
+				{
+					"name": "Reload Applied",
+					"status": "OK",
+					"code": 200,
+					"body": "{\n  \"success\": true,\n  \"message\": \"Reload applied successfully. You have an additional €1.50 AI allowance.\",\n  \"quota\": {\n    \"allowanceEur\": 3.0,\n    \"usedEur\": 1.5,\n    \"remainingEur\": 1.5,\n    \"reloadCount\": 1,\n    \"cycleEndDate\": \"2026-12-23T00:00:00.000Z\"\n  }\n}"
+				},
+				{
+					"name": "Duplicate Transaction",
+					"status": "Conflict",
+					"code": 409,
+					"body": "{\n  \"success\": false,\n  \"code\": \"DUPLICATE_TRANSACTION\",\n  \"message\": \"This reload transaction has already been applied.\"\n}"
+				},
+				{
+					"name": "Purchase Not Found",
+					"status": "Forbidden",
+					"code": 403,
+					"body": "{\n  \"success\": false,\n  \"code\": \"PURCHASE_NOT_FOUND\",\n  \"message\": \"Reload purchase could not be verified with RevenueCat.\"\n}"
+				}
+			]
+		},
+		{
+			"name": "9. Duplicate Reload (Should Fail)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"transactionId\": \"{{transactionId}}\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/ai-quota/reload",
+					"host": ["{{base_url}}"],
+					"path": ["ai-quota", "reload"]
+				},
+				"description": "Try applying the same reload transaction again.\n\n**Expected:** `409` with code `DUPLICATE_TRANSACTION`"
+			},
+			"response": []
+		},
+		{
+			"name": "10. Send AI Message (After Reload - Should Work)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"userMessage\": \"Thanks! I feel better now. How do I handle stress without smoking?\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/messages/send",
+					"host": ["{{base_url}}"],
+					"path": ["messages", "send"]
+				},
+				"description": "After reload, sending messages should work again.\n\n**Expected:** `200` with AI response."
+			},
+			"response": []
+		},
+		{
+			"name": "11. Final Quota Status Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/ai-quota/status",
+					"host": ["{{base_url}}"],
+					"path": ["ai-quota", "status"]
+				},
+				"description": "Final check showing all quota details including reload count.\n\n**Expected:** `reloadCount: 1`, updated `usedEur` and `remainingEur`."
+			},
+			"response": []
+		}
+	]
+}
