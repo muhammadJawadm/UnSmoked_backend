@@ -60,7 +60,7 @@ async function checkActiveSubscription(appUserId, entitlementId = "premium") {
  * @param {string} productId - The reload product id in RevenueCat (e.g. "ai_reload_pack")
  * @param {string} transactionId - The specific store transaction id to verify
  */
-async function verifyReloadPurchase(appUserId, productId = "ai_reload_pack") {
+async function verifyReloadPurchase(appUserId, productId = "ai_coach_reload") {
     const subscriber = await getSubscriberInfo(appUserId);
     const purchases = subscriber.non_subscriptions || {};
     const productPurchases = purchases[productId];
