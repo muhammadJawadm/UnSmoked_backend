@@ -1,8 +1,8 @@
 const AiQuota = require("../models/AiQuota");
 const { checkActiveSubscription, verifyReloadPurchase, getSubscriberInfo } = require("../services/revenueCatService");
 
-const BASE_ALLOWANCE_EUR = 0.05;
-const RELOAD_AMOUNT_EUR = 0.05;
+const BASE_ALLOWANCE_EUR = 0.03;
+const RELOAD_AMOUNT_EUR = 0.03;
 const RELOAD_PRODUCT_ID = "ai_coach_reload";
 
 // ──────────────────────────────────────────────────────────────────────────────
