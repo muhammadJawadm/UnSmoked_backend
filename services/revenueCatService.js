@@ -65,7 +65,8 @@ async function verifyReloadPurchase(appUserId, productId = "ai_coach_reload") {
     const purchases = subscriber.non_subscriptions || {};
     const productPurchases = purchases[productId];
 
-    if (!productPurchases || productPurchases.length === 0) {
+    if (!productPurchases || productPurchases.length === 0)
+        {
         return { valid: false };
     }
 

@@ -176,8 +176,13 @@ exports.getQuotaStatus = async (req, res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 exports.revenueCatWebhook = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-        if (authHeader !== `Bearer ${process.env.REVENUECAT_WEBHOOK_SECRET}`) {
+        console.log("[RevenueCat Webhook] Request hit. Headers auth:", req.headers.authorization ? "present" : "missing");
+
+        const authHeader = req.headers.authorization || "";
+        const webhookSecret = process.env.REVENUECAT_WEBHOOK_SECRET;
+        const isAuthorized = authHeader === `Bearer ${webhookSecret}` || authHeader === webhookSecret;
+        if (!isAuthorized) {
+            console.log("[RevenueCat Webhook] Auth FAILED. Received:", authHeader.substring(0, 15) + "...", "Secret set:", !!webhookSecret);
             return res.status(401).json({ success: false, message: "Unauthorized" });
         }
 
@@ -201,7 +206,7 @@ exports.revenueCatWebhook = async (req, res) => {
 
         // Check if this event is for the reload product — match by product_id OR entitlement
         const isReload = product_id === RELOAD_PRODUCT_ID
-            || (Array.isArray(entitlement_ids) && entitlement_ids.includes(RELOAD_PRODUCT_ID));
+            || (Array.isArray(entitlement_ids) && entitlement_ids.includes("ai_coach"));
 
         if (isReload) {
             // Reload pack purchased — add allowance regardless of event type
