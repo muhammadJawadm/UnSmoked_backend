@@ -186,7 +186,10 @@ exports.revenueCatWebhook = async (req, res) => {
             return res.status(400).json({ success: false, message: "No event in body" });
         }
 
-        const { type, app_user_id, expiration_at_ms, purchase_date_ms, product_id, store_transaction_id } = event;
+        const { type, app_user_id, expiration_at_ms, purchase_date_ms, product_id, store_transaction_id, entitlement_ids } = event;
+
+        console.log("[RevenueCat Webhook] Event received:", JSON.stringify({ type, app_user_id, product_id, store_transaction_id, entitlement_ids }));
+
         if (!app_user_id) {
             return res.status(200).json({ success: true, message: "No app_user_id, skipping" });
         }
@@ -196,24 +199,31 @@ exports.revenueCatWebhook = async (req, res) => {
             return res.status(200).json({ success: true, message: "No quota record for this user, skipping" });
         }
 
-        switch (type) {
-            case "RENEWAL":
-            case "INITIAL_PURCHASE": {
-                if (product_id === RELOAD_PRODUCT_ID) {
-                    // Reload pack purchased — add allowance
-                    const txId = store_transaction_id || `rc_${Date.now()}`;
-                    const alreadyUsed = quota.reloadHistory.some(r => r.transactionId === txId);
-                    if (!alreadyUsed) {
-                        quota.allowanceEur += RELOAD_AMOUNT_EUR;
-                        quota.reloadCount += 1;
-                        quota.reloadHistory.push({
-                            transactionId: txId,
-                            purchasedAt: new Date(),
-                            amountEur: RELOAD_AMOUNT_EUR
-                        });
-                        await quota.save();
-                    }
-                } else {
+        // Check if this event is for the reload product — match by product_id OR entitlement
+        const isReload = product_id === RELOAD_PRODUCT_ID
+            || (Array.isArray(entitlement_ids) && entitlement_ids.includes(RELOAD_PRODUCT_ID));
+
+        if (isReload) {
+            // Reload pack purchased — add allowance regardless of event type
+            const txId = store_transaction_id || `rc_${Date.now()}`;
+            const alreadyUsed = quota.reloadHistory.some(r => r.transactionId === txId);
+            if (!alreadyUsed) {
+                quota.allowanceEur += RELOAD_AMOUNT_EUR;
+                quota.reloadCount += 1;
+                quota.reloadHistory.push({
+                    transactionId: txId,
+                    purchasedAt: new Date(),
+                    amountEur: RELOAD_AMOUNT_EUR
+                });
+                await quota.save();
+                console.log("[RevenueCat Webhook] Reload applied for user:", app_user_id, "New allowance:", quota.allowanceEur);
+            } else {
+                console.log("[RevenueCat Webhook] Duplicate reload skipped, txId:", txId);
+            }
+        } else {
+            switch (type) {
+                case "RENEWAL":
+                case "INITIAL_PURCHASE": {
                     // Subscription purchase/renewal — reset quota for the new billing cycle
                     quota.allowanceEur = BASE_ALLOWANCE_EUR;
                     quota.usedEur = 0;
@@ -222,38 +232,21 @@ exports.revenueCatWebhook = async (req, res) => {
                     if (purchase_date_ms) quota.cycleStartDate = new Date(purchase_date_ms);
                     if (expiration_at_ms) quota.cycleEndDate = new Date(expiration_at_ms);
                     await quota.save();
+                    console.log("[RevenueCat Webhook] Subscription reset for user:", app_user_id);
+                    break;
                 }
-                break;
-            }
-            case "NON_RENEWING_PURCHASE": {
-                // This is what RevenueCat fires for consumable/non-subscription products like ai_coach_reload
-                if (product_id === RELOAD_PRODUCT_ID) {
-                    const txId = store_transaction_id || `rc_${Date.now()}`;
-                    const alreadyUsed = quota.reloadHistory.some(r => r.transactionId === txId);
-                    if (!alreadyUsed) {
-                        quota.allowanceEur += RELOAD_AMOUNT_EUR;
-                        quota.reloadCount += 1;
-                        quota.reloadHistory.push({
-                            transactionId: txId,
-                            purchasedAt: new Date(),
-                            amountEur: RELOAD_AMOUNT_EUR
-                        });
+                case "EXPIRATION":
+                case "CANCELLATION": {
+                    if (expiration_at_ms) {
+                        quota.cycleEndDate = new Date(expiration_at_ms);
                         await quota.save();
                     }
+                    break;
                 }
-                break;
+                default:
+                    console.log("[RevenueCat Webhook] Unhandled event type:", type);
+                    break;
             }
-            case "EXPIRATION":
-            case "CANCELLATION": {
-                // Cycle ended — the middleware will block further messages
-                if (expiration_at_ms) {
-                    quota.cycleEndDate = new Date(expiration_at_ms);
-                    await quota.save();
-                }
-                break;
-            }
-            default:
-                break;
         }
 
         res.status(200).json({ success: true });
