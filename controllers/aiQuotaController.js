@@ -1,8 +1,9 @@
 const AiQuota = require("../models/AiQuota");
 const { checkActiveSubscription, verifyReloadPurchase, getSubscriberInfo } = require("../services/revenueCatService");
 
-const BASE_ALLOWANCE_EUR = 0.10;
-const RELOAD_AMOUNT_EUR = 0.10;
+const BASE_ALLOWANCE_EUR = 0.05;
+const RELOAD_AMOUNT_EUR = 0.05;
+const RELOAD_PRODUCT_ID = "ai_coach_reload";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /ai-quota/initialize
@@ -185,7 +186,7 @@ exports.revenueCatWebhook = async (req, res) => {
             return res.status(400).json({ success: false, message: "No event in body" });
         }
 
-        const { type, app_user_id, expiration_at_ms, purchase_date_ms } = event;
+        const { type, app_user_id, expiration_at_ms, purchase_date_ms, product_id, store_transaction_id } = event;
         if (!app_user_id) {
             return res.status(200).json({ success: true, message: "No app_user_id, skipping" });
         }
@@ -198,14 +199,48 @@ exports.revenueCatWebhook = async (req, res) => {
         switch (type) {
             case "RENEWAL":
             case "INITIAL_PURCHASE": {
-                // Reset quota for the new billing cycle
-                quota.allowanceEur = BASE_ALLOWANCE_EUR;
-                quota.usedEur = 0;
-                quota.reloadCount = 0;
-                quota.reloadHistory = [];
-                if (purchase_date_ms) quota.cycleStartDate = new Date(purchase_date_ms);
-                if (expiration_at_ms) quota.cycleEndDate = new Date(expiration_at_ms);
-                await quota.save();
+                if (product_id === RELOAD_PRODUCT_ID) {
+                    // Reload pack purchased — add allowance
+                    const txId = store_transaction_id || `rc_${Date.now()}`;
+                    const alreadyUsed = quota.reloadHistory.some(r => r.transactionId === txId);
+                    if (!alreadyUsed) {
+                        quota.allowanceEur += RELOAD_AMOUNT_EUR;
+                        quota.reloadCount += 1;
+                        quota.reloadHistory.push({
+                            transactionId: txId,
+                            purchasedAt: new Date(),
+                            amountEur: RELOAD_AMOUNT_EUR
+                        });
+                        await quota.save();
+                    }
+                } else {
+                    // Subscription purchase/renewal — reset quota for the new billing cycle
+                    quota.allowanceEur = BASE_ALLOWANCE_EUR;
+                    quota.usedEur = 0;
+                    quota.reloadCount = 0;
+                    quota.reloadHistory = [];
+                    if (purchase_date_ms) quota.cycleStartDate = new Date(purchase_date_ms);
+                    if (expiration_at_ms) quota.cycleEndDate = new Date(expiration_at_ms);
+                    await quota.save();
+                }
+                break;
+            }
+            case "NON_RENEWING_PURCHASE": {
+                // This is what RevenueCat fires for consumable/non-subscription products like ai_coach_reload
+                if (product_id === RELOAD_PRODUCT_ID) {
+                    const txId = store_transaction_id || `rc_${Date.now()}`;
+                    const alreadyUsed = quota.reloadHistory.some(r => r.transactionId === txId);
+                    if (!alreadyUsed) {
+                        quota.allowanceEur += RELOAD_AMOUNT_EUR;
+                        quota.reloadCount += 1;
+                        quota.reloadHistory.push({
+                            transactionId: txId,
+                            purchasedAt: new Date(),
+                            amountEur: RELOAD_AMOUNT_EUR
+                        });
+                        await quota.save();
+                    }
+                }
                 break;
             }
             case "EXPIRATION":
